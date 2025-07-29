@@ -13,6 +13,8 @@ This is a Streamlit-based web application for calculating electricity costs base
 ✓ Integrated locale-based currency detection (defaults to SEK)
 ✓ Enhanced UI with session state management for tariffs
 ✓ Fixed cost breakdown to show net amounts separately from VAT
+✓ Added browser storage for user configuration persistence
+✓ Implemented save/load/reset functionality for billing parameters
 
 ## User Preferences
 

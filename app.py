@@ -6,6 +6,7 @@ from datetime import datetime, time
 import numpy as np
 from io import StringIO
 import locale
+import json
 
 # Set page configuration
 st.set_page_config(
@@ -151,12 +152,79 @@ def get_currency_symbol():
     except:
         return 'SEK'
 
+def save_config_to_browser(config):
+    """Save configuration to browser local storage using Streamlit's query params."""
+    try:
+        config_json = json.dumps(config)
+        st.query_params.config = config_json
+    except Exception as e:
+        st.warning(f"Could not save configuration: {str(e)}")
+
+def load_config_from_browser():
+    """Load configuration from browser local storage."""
+    try:
+        config_json = st.query_params.get("config", None)
+        if config_json:
+            return json.loads(config_json)
+        return None
+    except Exception as e:
+        return None
+
+def get_default_config():
+    """Get default configuration values."""
+    return {
+        'fixed_cost': 100.0,
+        'usage_rate': 1.20,
+        'vat_rate': 25.0,
+        'prices_include_vat': False,
+        'tariffs': [
+            {
+                'name': 'Power Tariff 1',
+                'enabled': True,
+                'top_n': 3,
+                'rate': 50.0,
+                'months': [],
+                'hours': []
+            }
+        ]
+    }
+
 def main():
     st.title("⚡ Electricity Cost Calculator")
     st.markdown("Upload your hourly electricity usage CSV file and configure billing parameters to calculate your total electricity cost.")
     
+    # Show configuration storage info
+    with st.expander("ℹ️ Configuration Storage", expanded=False):
+        st.markdown("""
+        Your billing configuration is automatically stored in your browser and will be restored when you return to this page.
+        
+        **Features:**
+        - **Auto-restore**: Settings load automatically when you visit the page
+        - **Manual save**: Use the 'Save Config' button to store current settings
+        - **Load saved**: Use 'Load Config' to restore previously saved settings
+        - **Reset**: Use 'Reset' to return to default values
+        
+        Settings are stored locally in your browser and are not shared with other users or devices.
+        """)
+    
     # Get currency symbol
     currency = get_currency_symbol()
+    
+    # Load configuration from browser or use defaults
+    saved_config = load_config_from_browser()
+    config_source = "saved" if saved_config is not None else "default"
+    if saved_config is None:
+        saved_config = get_default_config()
+    
+    # Initialize session state with saved config if not already initialized
+    if 'config_loaded' not in st.session_state:
+        st.session_state.fixed_cost = saved_config['fixed_cost']
+        st.session_state.usage_rate = saved_config['usage_rate']
+        st.session_state.vat_rate = saved_config['vat_rate']
+        st.session_state.prices_include_vat = saved_config['prices_include_vat']
+        st.session_state.tariffs = saved_config['tariffs']
+        st.session_state.config_loaded = True
+        st.session_state.config_source = config_source
     
     # File upload section
     st.header("📁 Upload Usage Data")
@@ -211,49 +279,98 @@ def main():
                 fixed_cost = st.number_input(
                     f"Fixed Monthly Cost ({currency})",
                     min_value=0.0,
-                    value=100.0,
+                    value=st.session_state.fixed_cost,
                     step=1.0,
-                    format="%.2f"
+                    format="%.2f",
+                    key="fixed_cost_input"
                 )
                 
                 usage_rate = st.number_input(
                     f"Usage Cost per kWh ({currency})",
                     min_value=0.0,
-                    value=1.20,
+                    value=st.session_state.usage_rate,
                     step=0.01,
-                    format="%.4f"
+                    format="%.4f",
+                    key="usage_rate_input"
                 )
                 
                 vat_rate = st.number_input(
                     "VAT Percentage",
                     min_value=0.0,
                     max_value=100.0,
-                    value=25.0,
+                    value=st.session_state.vat_rate,
                     step=0.1,
-                    format="%.1f"
+                    format="%.1f",
+                    key="vat_rate_input"
                 )
                 
                 prices_include_vat = st.checkbox(
                     "Entered prices include VAT",
-                    value=False,
-                    help="Check this if the prices you entered above already include VAT"
+                    value=st.session_state.prices_include_vat,
+                    help="Check this if the prices you entered above already include VAT",
+                    key="prices_include_vat_input"
                 )
+                
+                # Update session state with current values
+                st.session_state.fixed_cost = fixed_cost
+                st.session_state.usage_rate = usage_rate
+                st.session_state.vat_rate = vat_rate
+                st.session_state.prices_include_vat = prices_include_vat
+                
+                # Save/Load configuration buttons
+                col_save, col_load, col_reset = st.columns(3)
+                with col_save:
+                    if st.button("💾 Save Config", help="Save current settings to browser storage"):
+                        config = {
+                            'fixed_cost': fixed_cost,
+                            'usage_rate': usage_rate,
+                            'vat_rate': vat_rate,
+                            'prices_include_vat': prices_include_vat,
+                            'tariffs': st.session_state.tariffs
+                        }
+                        save_config_to_browser(config)
+                        st.session_state.config_source = "saved"
+                        st.success("Configuration saved!")
+                        st.rerun()
+                
+                with col_load:
+                    if st.button("📂 Load Config", help="Load settings from browser storage"):
+                        saved_config = load_config_from_browser()
+                        if saved_config:
+                            st.session_state.fixed_cost = saved_config['fixed_cost']
+                            st.session_state.usage_rate = saved_config['usage_rate']
+                            st.session_state.vat_rate = saved_config['vat_rate']
+                            st.session_state.prices_include_vat = saved_config['prices_include_vat']
+                            st.session_state.tariffs = saved_config['tariffs']
+                            st.session_state.config_source = "saved"
+                            st.success("Configuration loaded!")
+                            st.rerun()
+                        else:
+                            st.warning("No saved configuration found.")
+                
+                with col_reset:
+                    if st.button("🔄 Reset", help="Reset to default values"):
+                        default_config = get_default_config()
+                        st.session_state.fixed_cost = default_config['fixed_cost']
+                        st.session_state.usage_rate = default_config['usage_rate']
+                        st.session_state.vat_rate = default_config['vat_rate']
+                        st.session_state.prices_include_vat = default_config['prices_include_vat']
+                        st.session_state.tariffs = default_config['tariffs']
+                        st.session_state.config_source = "default"
+                        st.success("Configuration reset to defaults!")
+                        st.rerun()
+                
+                # Show current config status
+                if hasattr(st.session_state, 'config_source'):
+                    if st.session_state.config_source == "saved":
+                        st.info("📁 Using saved configuration from browser storage")
+                    else:
+                        st.info("⚙️ Using default configuration")
             
             with col2:
                 st.subheader("Power Tariffs")
                 
-                # Initialize session state for tariffs if not exists
-                if 'tariffs' not in st.session_state:
-                    st.session_state.tariffs = [
-                        {
-                            'name': 'Power Tariff 1',
-                            'enabled': True,
-                            'top_n': 3,
-                            'rate': 50.0,
-                            'months': [],
-                            'hours': []
-                        }
-                    ]
+                # Tariffs are already initialized from saved config
                 
                 # Add/Remove tariff buttons
                 col_add, col_remove = st.columns(2)
