@@ -73,9 +73,19 @@ def calculate_power_tariffs(df, datetime_col, usage_col, tariffs):
     """Calculate power tariff costs based on mean of peak usage hours on separate days."""
     total_tariff_cost = 0
     peak_hours_info = []
+    tariff_costs = []  # Individual tariff costs
     
     for tariff in tariffs:
         if not tariff['enabled']:
+            # Add zero cost entry for disabled tariffs
+            tariff_costs.append({
+                'name': tariff['name'],
+                'cost': 0,
+                'mean_usage': 0,
+                'top_n': tariff['top_n'],
+                'rate': tariff['rate'],
+                'enabled': False
+            })
             continue
             
         # Filter data based on month and hour restrictions
@@ -90,6 +100,14 @@ def calculate_power_tariffs(df, datetime_col, usage_col, tariffs):
             filtered_df = filtered_df[filtered_df[datetime_col].dt.hour.isin(tariff['hours'])]
         
         if filtered_df.empty:
+            tariff_costs.append({
+                'name': tariff['name'],
+                'cost': 0,
+                'mean_usage': 0,
+                'top_n': tariff['top_n'],
+                'rate': tariff['rate'],
+                'enabled': True
+            })
             continue
         
         # Group by date and find the maximum usage for each day
@@ -108,6 +126,16 @@ def calculate_power_tariffs(df, datetime_col, usage_col, tariffs):
             mean_peak_usage = 0
             tariff_cost = 0
         
+        # Store individual tariff cost info
+        tariff_costs.append({
+            'name': tariff['name'],
+            'cost': tariff_cost,
+            'mean_usage': mean_peak_usage,
+            'top_n': tariff['top_n'],
+            'rate': tariff['rate'],
+            'enabled': True
+        })
+        
         # Store peak hours information for highlighting
         for _, peak in top_peaks.iterrows():
             # Find the actual datetime for this peak
@@ -124,7 +152,7 @@ def calculate_power_tariffs(df, datetime_col, usage_col, tariffs):
                 'mean_usage': mean_peak_usage
             })
     
-    return total_tariff_cost, peak_hours_info
+    return total_tariff_cost, peak_hours_info, tariff_costs
 
 def calculate_vat(amount, vat_rate, prices_include_vat):
     """Calculate VAT amount and net amount."""
@@ -140,17 +168,19 @@ def calculate_vat(amount, vat_rate, prices_include_vat):
     
     return net_amount, vat_amount
 
-def get_currency_symbol():
-    """Get currency symbol based on user's locale, default to SEK."""
-    try:
-        locale.setlocale(locale.LC_ALL, '')
-        currency_info = locale.localeconv()
-        currency_symbol = currency_info.get('currency_symbol', 'SEK')
-        if not currency_symbol or currency_symbol == '':
-            currency_symbol = 'SEK'
-        return currency_symbol
-    except:
-        return 'SEK'
+def get_available_currencies():
+    """Get list of available currencies."""
+    return {
+        'SEK': 'kr',
+        'EUR': '€',
+        'USD': '$',
+        'GBP': '£',
+        'NOK': 'kr',
+        'DKK': 'kr',
+        'CHF': 'CHF',
+        'CAD': '$',
+        'AUD': '$'
+    }
 
 def save_config_to_browser(config):
     """Save configuration to browser local storage using Streamlit's query params."""
@@ -177,6 +207,7 @@ def get_default_config():
         'usage_rate': 1.20,
         'vat_rate': 25.0,
         'prices_include_vat': False,
+        'currency': 'SEK',
         'tariffs': [
             {
                 'name': 'Power Tariff 1',
@@ -207,9 +238,6 @@ def main():
         Settings are stored locally in your browser and are not shared with other users or devices.
         """)
     
-    # Get currency symbol
-    currency = get_currency_symbol()
-    
     # Load configuration from browser or use defaults
     saved_config = load_config_from_browser()
     config_source = "saved" if saved_config is not None else "default"
@@ -222,6 +250,7 @@ def main():
         st.session_state.usage_rate = saved_config['usage_rate']
         st.session_state.vat_rate = saved_config['vat_rate']
         st.session_state.prices_include_vat = saved_config['prices_include_vat']
+        st.session_state.currency = saved_config.get('currency', 'SEK')
         st.session_state.tariffs = saved_config['tariffs']
         st.session_state.config_loaded = True
         st.session_state.config_source = config_source
@@ -276,8 +305,23 @@ def main():
             
             with col1:
                 st.subheader("Basic Costs")
+                
+                # Currency selector
+                currencies = get_available_currencies()
+                currency_options = list(currencies.keys())
+                default_currency_index = currency_options.index(st.session_state.currency) if st.session_state.currency in currency_options else 0
+                
+                selected_currency = st.selectbox(
+                    "Currency",
+                    options=currency_options,
+                    index=default_currency_index,
+                    key="currency_input",
+                    help="Select your local currency"
+                )
+                currency_symbol = currencies[selected_currency]
+                
                 fixed_cost = st.number_input(
-                    f"Fixed Monthly Cost ({currency})",
+                    f"Fixed Monthly Cost ({selected_currency})",
                     min_value=0.0,
                     value=st.session_state.fixed_cost,
                     step=1.0,
@@ -286,7 +330,7 @@ def main():
                 )
                 
                 usage_rate = st.number_input(
-                    f"Usage Cost per kWh ({currency})",
+                    f"Usage Cost per kWh ({selected_currency})",
                     min_value=0.0,
                     value=st.session_state.usage_rate,
                     step=0.01,
@@ -316,6 +360,7 @@ def main():
                 st.session_state.usage_rate = usage_rate
                 st.session_state.vat_rate = vat_rate
                 st.session_state.prices_include_vat = prices_include_vat
+                st.session_state.currency = selected_currency
                 
                 # Save/Load configuration buttons
                 col_save, col_load, col_reset = st.columns(3)
@@ -326,6 +371,7 @@ def main():
                             'usage_rate': usage_rate,
                             'vat_rate': vat_rate,
                             'prices_include_vat': prices_include_vat,
+                            'currency': selected_currency,
                             'tariffs': st.session_state.tariffs
                         }
                         save_config_to_browser(config)
@@ -341,6 +387,7 @@ def main():
                             st.session_state.usage_rate = saved_config['usage_rate']
                             st.session_state.vat_rate = saved_config['vat_rate']
                             st.session_state.prices_include_vat = saved_config['prices_include_vat']
+                            st.session_state.currency = saved_config.get('currency', 'SEK')
                             st.session_state.tariffs = saved_config['tariffs']
                             st.session_state.config_source = "saved"
                             st.success("Configuration loaded!")
@@ -355,6 +402,7 @@ def main():
                         st.session_state.usage_rate = default_config['usage_rate']
                         st.session_state.vat_rate = default_config['vat_rate']
                         st.session_state.prices_include_vat = default_config['prices_include_vat']
+                        st.session_state.currency = default_config['currency']
                         st.session_state.tariffs = default_config['tariffs']
                         st.session_state.config_source = "default"
                         st.success("Configuration reset to defaults!")
@@ -416,7 +464,7 @@ def main():
                         )
                         
                         rate = st.number_input(
-                            f"Tariff Rate per kWh ({currency})",
+                            f"Tariff Rate per kWh ({selected_currency})",
                             min_value=0.0,
                             value=tariff_data['rate'],
                             step=1.0,
@@ -490,7 +538,7 @@ def main():
                     usage_cost = total_usage * usage_rate
                     
                     # Power tariff costs
-                    tariff_cost, peak_hours_info = calculate_power_tariffs(
+                    tariff_cost, peak_hours_info, individual_tariff_costs = calculate_power_tariffs(
                         df, datetime_col, usage_col, tariffs
                     )
                     
@@ -523,13 +571,31 @@ def main():
                 
                 with col1:
                     st.subheader("Cost Components (Net)")
-                    st.metric("Fixed Monthly Cost", f"{currency} {fixed_net:.2f}")
-                    st.metric("Usage Cost", f"{currency} {usage_net:.2f}", 
+                    st.metric("Fixed Monthly Cost", f"{currency_symbol} {fixed_net:.2f}")
+                    st.metric("Usage Cost", f"{currency_symbol} {usage_net:.2f}", 
                              help=f"Total usage: {total_usage:.2f} kWh")
-                    st.metric("Power Tariff Cost", f"{currency} {tariff_net:.2f}")
-                    st.metric("Subtotal (Net)", f"{currency} {subtotal_net:.2f}")
-                    st.metric("VAT ({:.1f}%)".format(vat_rate), f"{currency} {total_vat:.2f}")
-                    st.metric("**Total Cost**", f"**{currency} {total_cost:.2f}**")
+                    
+                    # Show individual tariff costs
+                    for tariff_info in individual_tariff_costs:
+                        if tariff_info['enabled'] and tariff_info['cost'] > 0:
+                            if prices_include_vat:
+                                tariff_display_cost, _ = calculate_vat(tariff_info['cost'], vat_rate, True)
+                            else:
+                                tariff_display_cost = tariff_info['cost']
+                            
+                            st.metric(
+                                f"{tariff_info['name']}", 
+                                f"{currency_symbol} {tariff_display_cost:.2f}",
+                                help=f"Mean of top {tariff_info['top_n']} days: {tariff_info['mean_usage']:.3f} kWh × {currency_symbol} {tariff_info['rate']:.2f}"
+                            )
+                    
+                    # Show total tariff cost
+                    if tariff_net > 0:
+                        st.metric("Total Power Tariffs", f"{currency_symbol} {tariff_net:.2f}")
+                    
+                    st.metric("Subtotal (Net)", f"{currency_symbol} {subtotal_net:.2f}")
+                    st.metric("VAT ({:.1f}%)".format(vat_rate), f"{currency_symbol} {total_vat:.2f}")
+                    st.metric("**Total Cost**", f"**{currency_symbol} {total_cost:.2f}**")
                 
                 with col2:
                     st.subheader("Usage Statistics")
@@ -605,8 +671,8 @@ def main():
                         'Date & Time',
                         'Usage (kWh)',
                         'Tariff',
-                        f'Rate ({currency}/kWh)',
-                        f'Cost ({currency})'
+                        f'Rate ({selected_currency}/kWh)',
+                        f'Cost ({selected_currency})'
                     ]
                     st.dataframe(display_df, use_container_width=True)
         

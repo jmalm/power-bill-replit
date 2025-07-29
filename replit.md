@@ -15,6 +15,9 @@ This is a Streamlit-based web application for calculating electricity costs base
 ✓ Fixed cost breakdown to show net amounts separately from VAT
 ✓ Added browser storage for user configuration persistence
 ✓ Implemented save/load/reset functionality for billing parameters
+✓ Added individual tariff cost reporting by name in breakdown
+✓ Replaced server-side locale detection with user-selectable currency
+✓ Enhanced cost breakdown to show each tariff separately with details
 
 ## User Preferences
 
