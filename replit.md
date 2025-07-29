@@ -2,7 +2,17 @@
 
 ## Overview
 
-This is a Streamlit-based web application for calculating electricity costs based on time-of-use data. The application allows users to upload CSV files containing electricity usage data and provides visualizations and cost calculations. The system is built as a single-file Python application using Streamlit for the web interface and Plotly for data visualization.
+This is a Streamlit-based web application for calculating electricity costs based on time-of-use data with comprehensive billing models and VAT handling. The application allows users to upload CSV files containing hourly electricity usage data and provides detailed cost breakdowns, visualizations, and interactive tariff configuration. The system is built as a single-file Python application using Streamlit for the web interface and Plotly for data visualization.
+
+## Recent Changes (July 2025)
+
+✓ Implemented dynamic power tariff system with add/remove functionality
+✓ Added named power tariffs with user-customizable names
+✓ Updated power tariff calculation to use mean of N top peak days
+✓ Added proper VAT handling (inclusive/exclusive pricing options)
+✓ Integrated locale-based currency detection (defaults to SEK)
+✓ Enhanced UI with session state management for tariffs
+✓ Fixed cost breakdown to show net amounts separately from VAT
 
 ## User Preferences
 

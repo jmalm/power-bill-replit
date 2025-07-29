@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime, time
 import numpy as np
 from io import StringIO
+import locale
 
 # Set page configuration
 st.set_page_config(
@@ -52,6 +53,11 @@ def validate_csv_data(df):
     
     # Validate usage column
     try:
+        # Attempt to convert usage column to numeric, handling different decimal separators
+        try:
+            df[usage_col] = df[usage_col].str.replace(',', '.', regex=False).astype(float)
+        except AttributeError:
+            pass  # Column might already be numeric
         df[usage_col] = pd.to_numeric(df[usage_col], errors='coerce')
         if df[usage_col].isna().any():
             errors.append(f"Non-numeric values found in usage column '{usage_col}'")
@@ -63,11 +69,11 @@ def validate_csv_data(df):
     return errors, datetime_col, usage_col
 
 def calculate_power_tariffs(df, datetime_col, usage_col, tariffs):
-    """Calculate power tariff costs based on peak usage hours."""
+    """Calculate power tariff costs based on mean of peak usage hours on separate days."""
     total_tariff_cost = 0
     peak_hours_info = []
     
-    for i, tariff in enumerate(tariffs):
+    for tariff in tariffs:
         if not tariff['enabled']:
             continue
             
@@ -92,9 +98,14 @@ def calculate_power_tariffs(df, datetime_col, usage_col, tariffs):
         # Sort by peak usage and take top N
         top_peaks = daily_peaks.nlargest(tariff['top_n'], 'peak_usage')
         
-        # Calculate tariff cost
-        tariff_cost = top_peaks['peak_usage'].sum() * tariff['rate']
-        total_tariff_cost += tariff_cost
+        # Calculate tariff cost using MEAN of top N peaks
+        if not top_peaks.empty:
+            mean_peak_usage = top_peaks['peak_usage'].mean()
+            tariff_cost = mean_peak_usage * tariff['rate']
+            total_tariff_cost += tariff_cost
+        else:
+            mean_peak_usage = 0
+            tariff_cost = 0
         
         # Store peak hours information for highlighting
         for _, peak in top_peaks.iterrows():
@@ -107,8 +118,9 @@ def calculate_power_tariffs(df, datetime_col, usage_col, tariffs):
             peak_hours_info.append({
                 'datetime': peak_datetime,
                 'usage': peak['peak_usage'],
-                'tariff_name': f"Tariff {i+1}",
-                'rate': tariff['rate']
+                'tariff_name': tariff['name'],
+                'rate': tariff['rate'],
+                'mean_usage': mean_peak_usage
             })
     
     return total_tariff_cost, peak_hours_info
@@ -127,9 +139,24 @@ def calculate_vat(amount, vat_rate, prices_include_vat):
     
     return net_amount, vat_amount
 
+def get_currency_symbol():
+    """Get currency symbol based on user's locale, default to SEK."""
+    try:
+        locale.setlocale(locale.LC_ALL, '')
+        currency_info = locale.localeconv()
+        currency_symbol = currency_info.get('currency_symbol', 'SEK')
+        if not currency_symbol or currency_symbol == '':
+            currency_symbol = 'SEK'
+        return currency_symbol
+    except:
+        return 'SEK'
+
 def main():
     st.title("⚡ Electricity Cost Calculator")
     st.markdown("Upload your hourly electricity usage CSV file and configure billing parameters to calculate your total electricity cost.")
+    
+    # Get currency symbol
+    currency = get_currency_symbol()
     
     # File upload section
     st.header("📁 Upload Usage Data")
@@ -144,6 +171,16 @@ def main():
             # Read CSV file
             stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
             df = pd.read_csv(stringio)
+            # Attempt to read CSV with comma separator
+            try:
+                df = pd.read_csv(stringio, sep=',')
+            except Exception:
+                # If comma fails, attempt to read with semicolon separator
+                stringio.seek(0)  # Reset file pointer
+                try:
+                    df = pd.read_csv(stringio, sep=';')
+                except Exception as e:
+                    raise Exception("Could not parse CSV file with comma or semicolon separators.") from e
             
             # Validate data
             validation_result = validate_csv_data(df)
@@ -172,7 +209,7 @@ def main():
             with col1:
                 st.subheader("Basic Costs")
                 fixed_cost = st.number_input(
-                    "Fixed Monthly Cost (based on main fuse)",
+                    f"Fixed Monthly Cost ({currency})",
                     min_value=0.0,
                     value=100.0,
                     step=1.0,
@@ -180,7 +217,7 @@ def main():
                 )
                 
                 usage_rate = st.number_input(
-                    "Usage Cost per kWh",
+                    f"Usage Cost per kWh ({currency})",
                     min_value=0.0,
                     value=1.20,
                     step=0.01,
@@ -204,32 +241,67 @@ def main():
             
             with col2:
                 st.subheader("Power Tariffs")
-                num_tariffs = st.number_input(
-                    "Number of Power Tariffs",
-                    min_value=0,
-                    max_value=10,
-                    value=1,
-                    step=1
-                )
                 
+                # Initialize session state for tariffs if not exists
+                if 'tariffs' not in st.session_state:
+                    st.session_state.tariffs = [
+                        {
+                            'name': 'Power Tariff 1',
+                            'enabled': True,
+                            'top_n': 3,
+                            'rate': 50.0,
+                            'months': [],
+                            'hours': []
+                        }
+                    ]
+                
+                # Add/Remove tariff buttons
+                col_add, col_remove = st.columns(2)
+                with col_add:
+                    if st.button("Add Tariff", type="secondary"):
+                        st.session_state.tariffs.append({
+                            'name': f'Power Tariff {len(st.session_state.tariffs) + 1}',
+                            'enabled': True,
+                            'top_n': 3,
+                            'rate': 50.0,
+                            'months': [],
+                            'hours': []
+                        })
+                        st.rerun()
+                
+                with col_remove:
+                    if st.button("Remove Last Tariff", type="secondary", disabled=len(st.session_state.tariffs) <= 0):
+                        if st.session_state.tariffs:
+                            st.session_state.tariffs.pop()
+                            st.rerun()
+                
+                # Display tariffs
                 tariffs = []
-                for i in range(num_tariffs):
-                    with st.expander(f"Power Tariff {i+1}", expanded=True):
-                        enabled = st.checkbox(f"Enable Tariff {i+1}", value=True, key=f"enable_{i}")
+                for i, tariff_data in enumerate(st.session_state.tariffs):
+                    with st.expander(f"{tariff_data['name']}", expanded=True):
+                        # Tariff name
+                        name = st.text_input(
+                            f"Tariff Name",
+                            value=tariff_data['name'],
+                            key=f"name_{i}"
+                        )
+                        
+                        enabled = st.checkbox(f"Enable this tariff", value=tariff_data['enabled'], key=f"enable_{i}")
                         
                         top_n = st.number_input(
-                            f"Top N peak hours",
+                            f"Top N peak days",
                             min_value=1,
                             max_value=31,
-                            value=3,
+                            value=tariff_data['top_n'],
                             step=1,
-                            key=f"top_n_{i}"
+                            key=f"top_n_{i}",
+                            help="Number of highest usage days to include in the mean calculation"
                         )
                         
                         rate = st.number_input(
-                            f"Tariff Rate per kWh",
+                            f"Tariff Rate per kWh ({currency})",
                             min_value=0.0,
-                            value=50.0,
+                            value=tariff_data['rate'],
                             step=1.0,
                             format="%.2f",
                             key=f"rate_{i}"
@@ -245,34 +317,53 @@ def main():
                         selected_months = st.multiselect(
                             f"Applicable Months (leave empty for all year)",
                             options=list(month_options.keys()),
+                            default=[k for k, v in month_options.items() if v in tariff_data['months']],
                             key=f"months_{i}"
                         )
                         months = [month_options[month] for month in selected_months] if selected_months else []
                         
                         # Hour restrictions
-                        hour_range = st.slider(
-                            f"Applicable Hours (24h format)",
-                            min_value=0,
-                            max_value=23,
-                            value=(0, 23),
-                            key=f"hours_{i}"
-                        )
-                        
                         apply_hour_restriction = st.checkbox(
                             f"Apply hour restriction",
-                            value=False,
+                            value=bool(tariff_data['hours']),
                             key=f"apply_hours_{i}"
                         )
                         
-                        hours = list(range(hour_range[0], hour_range[1] + 1)) if apply_hour_restriction else []
+                        if apply_hour_restriction:
+                            if tariff_data['hours']:
+                                default_range = (min(tariff_data['hours']), max(tariff_data['hours']))
+                            else:
+                                default_range = (0, 23)
+                            
+                            hour_range = st.slider(
+                                f"Applicable Hours (24h format)",
+                                min_value=0,
+                                max_value=23,
+                                value=default_range,
+                                key=f"hours_{i}"
+                            )
+                            hours = list(range(hour_range[0], hour_range[1] + 1))
+                        else:
+                            hours = []
                         
                         tariffs.append({
+                            'name': name,
                             'enabled': enabled,
                             'top_n': top_n,
                             'rate': rate,
                             'months': months,
                             'hours': hours
                         })
+                        
+                        # Update session state
+                        st.session_state.tariffs[i] = {
+                            'name': name,
+                            'enabled': enabled,
+                            'top_n': top_n,
+                            'rate': rate,
+                            'months': months,
+                            'hours': hours
+                        }
             
             # Calculate costs
             if st.button("Calculate Electricity Cost", type="primary"):
@@ -315,13 +406,13 @@ def main():
                 
                 with col1:
                     st.subheader("Cost Components (Net)")
-                    st.metric("Fixed Monthly Cost", f"€{fixed_net:.2f}")
-                    st.metric("Usage Cost", f"€{usage_net:.2f}", 
+                    st.metric("Fixed Monthly Cost", f"{currency} {fixed_net:.2f}")
+                    st.metric("Usage Cost", f"{currency} {usage_net:.2f}", 
                              help=f"Total usage: {total_usage:.2f} kWh")
-                    st.metric("Power Tariff Cost", f"€{tariff_net:.2f}")
-                    st.metric("Subtotal (Net)", f"€{subtotal_net:.2f}")
-                    st.metric("VAT ({:.1f}%)".format(vat_rate), f"€{total_vat:.2f}")
-                    st.metric("**Total Cost**", f"**€{total_cost:.2f}**")
+                    st.metric("Power Tariff Cost", f"{currency} {tariff_net:.2f}")
+                    st.metric("Subtotal (Net)", f"{currency} {subtotal_net:.2f}")
+                    st.metric("VAT ({:.1f}%)".format(vat_rate), f"{currency} {total_vat:.2f}")
+                    st.metric("**Total Cost**", f"**{currency} {total_cost:.2f}**")
                 
                 with col2:
                     st.subheader("Usage Statistics")
@@ -392,16 +483,15 @@ def main():
                     peak_df['cost'] = peak_df['usage'] * peak_df['rate']
                     peak_df = peak_df.sort_values('datetime')
                     
-                    st.dataframe(
-                        peak_df[['datetime', 'usage', 'tariff_name', 'rate', 'cost']].rename(columns={
-                            'datetime': 'Date & Time',
-                            'usage': 'Usage (kWh)',
-                            'tariff_name': 'Tariff',
-                            'rate': 'Rate (€/kWh)',
-                            'cost': 'Cost (€)'
-                        }),
-                        use_container_width=True
-                    )
+                    display_df = peak_df[['datetime', 'usage', 'tariff_name', 'rate', 'cost']].copy()
+                    display_df.columns = [
+                        'Date & Time',
+                        'Usage (kWh)',
+                        'Tariff',
+                        f'Rate ({currency}/kWh)',
+                        f'Cost ({currency})'
+                    ]
+                    st.dataframe(display_df, use_container_width=True)
         
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
