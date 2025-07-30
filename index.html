@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Electricity Cost Calculator</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ Electricity Cost Calculator</h1>
+            <p>Upload your hourly electricity usage CSV file to calculate costs with complex billing models</p>
+        </header>
+
+        <main>
+            <!-- Configuration Section -->
+            <section class="config-section">
+                <h2>Billing Configuration</h2>
+                
+                <!-- Price Model Selection -->
+                <div class="form-group">
+                    <label for="priceModel">Price Model:</label>
+                    <select id="priceModel">
+                        <option value="custom">Custom Configuration</option>
+                    </select>
+                </div>
+
+                <!-- Configuration Status -->
+                <div id="configStatus" class="status-info"></div>
+
+                <!-- Basic Settings -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="currency">Currency:</label>
+                        <select id="currency">
+                            <option value="SEK">SEK (Swedish Krona)</option>
+                            <option value="EUR">EUR (Euro)</option>
+                            <option value="USD">USD (US Dollar)</option>
+                            <option value="NOK">NOK (Norwegian Krone)</option>
+                            <option value="DKK">DKK (Danish Krone)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fixedCost">Monthly Fixed Cost:</label>
+                        <input type="number" id="fixedCost" step="0.01" min="0" value="100.00">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="usageRate">Usage Rate (per kWh):</label>
+                        <input type="number" id="usageRate" step="0.0001" min="0" value="1.2000">
+                    </div>
+                    <div class="form-group">
+                        <label for="vatRate">VAT Rate (%):</label>
+                        <input type="number" id="vatRate" step="0.1" min="0" max="100" value="25.0">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="pricesIncludeVat" checked>
+                        Prices include VAT
+                    </label>
+                </div>
+
+                <!-- Power Tariffs Section -->
+                <div class="tariffs-section">
+                    <div class="section-header">
+                        <h3>Power Tariffs</h3>
+                        <button type="button" id="addTariff" class="btn btn-secondary">Add Tariff</button>
+                    </div>
+                    <div id="tariffsContainer"></div>
+                </div>
+
+                <!-- Configuration Actions -->
+                <div class="config-actions">
+                    <button type="button" id="saveConfig" class="btn btn-primary">Save Configuration</button>
+                    <button type="button" id="loadConfig" class="btn btn-secondary">Load Saved</button>
+                    <button type="button" id="resetConfig" class="btn btn-danger">Reset to Defaults</button>
+                </div>
+            </section>
+
+            <!-- File Upload Section -->
+            <section class="upload-section">
+                <h2>Upload CSV File</h2>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="csvFile" accept=".csv" style="display: none;">
+                    <div class="upload-content">
+                        <div class="upload-icon">📄</div>
+                        <p>Drag and drop your CSV file here or click to browse</p>
+                        <p class="upload-hint">CSV should contain datetime and kWh usage columns</p>
+                    </div>
+                </div>
+                <div id="fileInfo" class="file-info" style="display: none;"></div>
+                <div id="validationResults" class="validation-results"></div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <h2>Analysis Results</h2>
+                
+                <!-- Usage Chart -->
+                <div class="chart-container">
+                    <h3>Electricity Usage</h3>
+                    <div id="usageChart"></div>
+                </div>
+
+                <!-- Cost Breakdown -->
+                <div class="cost-breakdown">
+                    <h3>Cost Breakdown</h3>
+                    <div id="costBreakdown"></div>
+                </div>
+
+                <!-- Summary Stats -->
+                <div class="summary-stats">
+                    <h3>Summary Statistics</h3>
+                    <div id="summaryStats"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
