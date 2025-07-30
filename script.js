@@ -476,13 +476,22 @@ function parseCSV(csvText) {
         throw new Error('CSV file must have at least a header row and one data row');
     }
     
+    // Detect separator (comma or semicolon)
+    const firstLine = lines[0];
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const separator = semicolonCount > commaCount ? ';' : ',';
+    
+    console.log('Detected CSV separator:', separator);
+    
     // Parse CSV with proper handling of quoted fields
-    const headers = parseCSVLine(lines[0]);
+    const headers = parseCSVLine(lines[0], separator);
+    console.log('Parsed headers:', headers);
     
     const data = [];
     for (let i = 1; i < lines.length; i++) {
         if (lines[i].trim()) { // Skip empty lines
-            const values = parseCSVLine(lines[i]);
+            const values = parseCSVLine(lines[i], separator);
             if (values.length === headers.length) {
                 const row = {};
                 headers.forEach((header, index) => {
@@ -497,7 +506,7 @@ function parseCSV(csvText) {
 }
 
 // Parse a single CSV line handling quoted fields
-function parseCSVLine(line) {
+function parseCSVLine(line, separator = ',') {
     const result = [];
     let current = '';
     let inQuotes = false;
@@ -507,7 +516,7 @@ function parseCSVLine(line) {
         
         if (char === '"') {
             inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
+        } else if (char === separator && !inQuotes) {
             result.push(current.trim());
             current = '';
         } else {
