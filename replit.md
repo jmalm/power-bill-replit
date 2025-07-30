@@ -25,6 +25,10 @@ This is a static web application for calculating electricity costs based on time
 ✓ Implemented client-side CSV processing and data validation
 ✓ Added drag-and-drop file upload with browser-based processing
 ✓ Maintained all original functionality in pure JavaScript
+✓ Enhanced automatic CSV separator detection (comma vs semicolon)
+✓ Improved price model discovery system with validation
+✓ Added models index file support for easy model management
+✓ Created comprehensive model loading with fallback discovery
 
 ## User Preferences
 

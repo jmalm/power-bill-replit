@@ -19,23 +19,163 @@ function initializeApp() {
 
 // Load available price models
 async function loadPriceModels() {
+    const priceModelSelect = document.getElementById('priceModel');
+    let modelsLoaded = 0;
+    let modelFiles = [];
+    
+    // First try to load models index file
     try {
-        // Try to load the Jönköping Energi model
-        const response = await fetch('price-models/jönköping-energi-20a.json');
-        if (response.ok) {
-            const modelData = await response.json();
-            availableModels['jonkoping-energi-20a'] = modelData;
-            
-            // Update the price model dropdown
-            const priceModelSelect = document.getElementById('priceModel');
-            const option = document.createElement('option');
-            option.value = 'jonkoping-energi-20a';
-            option.textContent = modelData.name;
-            priceModelSelect.appendChild(option);
+        const indexResponse = await fetch('price-models/models-index.json');
+        if (indexResponse.ok) {
+            const indexData = await indexResponse.json();
+            modelFiles = indexData.models || [];
+            console.log('Using models index file, found:', modelFiles.length, 'models');
         }
     } catch (error) {
-        console.log('No price models available');
+        console.log('No models index file found, using discovery approach');
     }
+    
+    // If no index file, fall back to discovery approach
+    if (modelFiles.length === 0) {
+        // List of known model files to try loading
+        const knownModels = [
+            'jönköping-energi-20a.json',
+            'jonkoping-energi-20a.json', // Alternative spelling
+            'vattenfall-standard.json',
+            'e-on-basic.json',
+            'fortum-fixed.json',
+            'ellevio-standard.json',
+            'goteborg-energi.json',
+            'stockholm-exergi.json',
+            'helsinkienergia-basic.json',
+            'oslo-energi.json',
+            'copenhagen-electricity.json'
+        ];
+        modelFiles = knownModels;
+    }
+    
+    // Load each model file
+    for (const filename of modelFiles) {
+        try {
+            const response = await fetch(`price-models/${filename}`);
+            if (response.ok) {
+                const modelData = await response.json();
+                
+                // Validate model structure
+                if (validatePriceModel(modelData)) {
+                    const modelKey = filename.replace('.json', '').toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                    availableModels[modelKey] = modelData;
+                    
+                    // Add option to dropdown
+                    const option = document.createElement('option');
+                    option.value = modelKey;
+                    option.textContent = modelData.name || filename.replace('.json', '');
+                    priceModelSelect.appendChild(option);
+                    
+                    modelsLoaded++;
+                    console.log(`Loaded price model: ${modelData.name || filename}`);
+                } else {
+                    console.warn(`Invalid price model structure in ${filename}`);
+                }
+            }
+        } catch (error) {
+            console.log(`Model ${filename} not found or invalid:`, error.message);
+        }
+    }
+    
+    // Try additional discovery patterns for common naming conventions
+    const discoveryPatterns = [
+        // Country-based patterns
+        'sweden-electricity.json', 'norway-electricity.json', 'denmark-electricity.json',
+        'finland-electricity.json', 'germany-electricity.json', 'netherlands-electricity.json',
+        // Provider patterns
+        'energi-standard.json', 'kraft-basic.json', 'power-residential.json',
+        // Generic patterns
+        'default-tariff.json', 'standard-pricing.json', 'residential-plan.json'
+    ];
+    
+    for (const filename of discoveryPatterns) {
+        try {
+            const response = await fetch(`price-models/${filename}`);
+            if (response.ok) {
+                const modelData = await response.json();
+                const modelKey = filename.replace('.json', '').toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                
+                // Only add if not already loaded and valid
+                if (!availableModels[modelKey] && validatePriceModel(modelData)) {
+                    availableModels[modelKey] = modelData;
+                    
+                    const option = document.createElement('option');
+                    option.value = modelKey;
+                    option.textContent = modelData.name || filename.replace('.json', '');
+                    priceModelSelect.appendChild(option);
+                    
+                    modelsLoaded++;
+                    console.log(`Discovered price model: ${modelData.name || filename}`);
+                }
+            }
+        } catch (error) {
+            // Silently continue for discovery patterns
+        }
+    }
+    
+    if (modelsLoaded > 0) {
+        console.log(`Successfully loaded ${modelsLoaded} price models`);
+        
+        // Sort dropdown options alphabetically (except "Custom Configuration")
+        const options = Array.from(priceModelSelect.options).slice(1); // Skip first "Custom" option
+        options.sort((a, b) => a.textContent.localeCompare(b.textContent));
+        
+        // Clear and re-add sorted options
+        while (priceModelSelect.children.length > 1) {
+            priceModelSelect.removeChild(priceModelSelect.lastChild);
+        }
+        options.forEach(option => priceModelSelect.appendChild(option));
+        
+    } else {
+        console.log('No price models found in price-models directory');
+        console.log('To add models: Create JSON files in the price-models/ directory or update models-index.json');
+    }
+}
+
+// Validate price model structure
+function validatePriceModel(modelData) {
+    // Check required fields
+    const requiredFields = ['currency', 'fixed_fee_per_month', 'usage_fee_per_kwh'];
+    for (const field of requiredFields) {
+        if (!(field in modelData)) {
+            console.warn(`Missing required field: ${field}`);
+            return false;
+        }
+    }
+    
+    // Validate data types
+    if (typeof modelData.currency !== 'string' || modelData.currency.length !== 3) {
+        console.warn('Invalid currency format');
+        return false;
+    }
+    
+    if (typeof modelData.fixed_fee_per_month !== 'number' || modelData.fixed_fee_per_month < 0) {
+        console.warn('Invalid fixed_fee_per_month');
+        return false;
+    }
+    
+    if (typeof modelData.usage_fee_per_kwh !== 'number' || modelData.usage_fee_per_kwh < 0) {
+        console.warn('Invalid usage_fee_per_kwh');
+        return false;
+    }
+    
+    // Validate power tariffs if present
+    if (modelData.power_tariffs && Array.isArray(modelData.power_tariffs)) {
+        for (const tariff of modelData.power_tariffs) {
+            if (!tariff.name || !tariff.fee_per_kw || !tariff.number_of_top_peaks_to_average) {
+                console.warn('Invalid power tariff structure');
+                return false;
+            }
+        }
+    }
+    
+    return true;
 }
 
 // Setup event listeners

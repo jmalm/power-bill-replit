@@ -1,0 +1,18 @@
+{
+    "name": "E.ON Basic Plan",
+    "currency": "SEK",
+    "tax_rate": 0.25,
+    "prices_include_tax": true,
+    "fixed_fee_per_month": 320.00,
+    "usage_fee_per_kwh": 0.0612,
+    "power_tariffs": [
+        {
+            "name": "Peak Load",
+            "fee_per_kw": 52.00,
+            "number_of_top_peaks_to_average": 2,
+            "months": [10, 11, 12, 1, 2, 3, 4],
+            "start_time": "07:00",
+            "end_time": "21:00"
+        }
+    ]
+}

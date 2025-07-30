@@ -1,0 +1,8 @@
+{
+    "models": [
+        "jönköping-energi-20a.json",
+        "vattenfall-standard.json",
+        "e-on-basic.json"
+    ],
+    "last_updated": "2025-07-30"
+}
