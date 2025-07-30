@@ -18,6 +18,9 @@ This is a Streamlit-based web application for calculating electricity costs base
 ✓ Added individual tariff cost reporting by name in breakdown
 ✓ Replaced server-side locale detection with user-selectable currency
 ✓ Enhanced cost breakdown to show each tariff separately with details
+✓ Implemented predefined price model system with dropdown selector
+✓ Added price-models directory support for JSON configuration files
+✓ Integrated price model loading with manual configuration override capability
 
 ## User Preferences
 

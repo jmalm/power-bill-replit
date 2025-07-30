@@ -7,6 +7,8 @@ import numpy as np
 from io import StringIO
 import locale
 import json
+import os
+import glob
 
 # Set page configuration
 st.set_page_config(
@@ -182,6 +184,79 @@ def get_available_currencies():
         'AUD': '$'
     }
 
+def load_price_models():
+    """Load all available price models from the price-models directory."""
+    price_models = {}
+    
+    try:
+        # Get all JSON files in the price-models directory
+        model_files = glob.glob('price-models/*.json')
+        
+        for file_path in model_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    model_data = json.load(f)
+                    
+                # Use filename (without extension) as key, but display name from JSON
+                model_key = os.path.splitext(os.path.basename(file_path))[0]
+                price_models[model_key] = model_data
+                
+            except Exception as e:
+                st.warning(f"Error loading price model {file_path}: {str(e)}")
+                continue
+    
+    except Exception as e:
+        st.warning(f"Error accessing price-models directory: {str(e)}")
+    
+    return price_models
+
+def convert_price_model_to_config(model_data):
+    """Convert a price model JSON to our internal configuration format."""
+    try:
+        # Convert time string to hour number
+        def time_to_hour(time_str):
+            return int(time_str.split(':')[0])
+        
+        config = {
+            'fixed_cost': model_data.get('fixed_fee_per_month', 100.0),
+            'usage_rate': model_data.get('usage_fee_per_kwh', 1.20),
+            'vat_rate': model_data.get('tax_rate', 0.25) * 100,  # Convert from decimal to percentage
+            'prices_include_vat': model_data.get('prices_include_tax', False),
+            'currency': model_data.get('currency', 'SEK'),
+            'tariffs': []
+        }
+        
+        # Convert power tariffs
+        for tariff in model_data.get('power_tariffs', []):
+            tariff_config = {
+                'name': tariff.get('name', 'Unnamed Tariff'),
+                'enabled': True,
+                'top_n': tariff.get('number_of_top_peaks_to_average', 3),
+                'rate': tariff.get('fee_per_kw', 50.0),
+                'months': tariff.get('months', []),
+                'hours': []
+            }
+            
+            # Convert time range to hour list if specified
+            if 'start_time' in tariff and 'end_time' in tariff:
+                start_hour = time_to_hour(tariff['start_time'])
+                end_hour = time_to_hour(tariff['end_time'])
+                
+                # Handle time ranges that cross midnight
+                if start_hour <= end_hour:
+                    tariff_config['hours'] = list(range(start_hour, end_hour + 1))
+                else:
+                    # Crosses midnight: start_hour to 23, then 0 to end_hour
+                    tariff_config['hours'] = list(range(start_hour, 24)) + list(range(0, end_hour + 1))
+            
+            config['tariffs'].append(tariff_config)
+        
+        return config
+        
+    except Exception as e:
+        st.error(f"Error converting price model: {str(e)}")
+        return None
+
 def save_config_to_browser(config):
     """Save configuration to browser local storage using Streamlit's query params."""
     try:
@@ -208,6 +283,7 @@ def get_default_config():
         'vat_rate': 25.0,
         'prices_include_vat': False,
         'currency': 'SEK',
+        'selected_price_model': 'custom',
         'tariffs': [
             {
                 'name': 'Power Tariff 1',
@@ -244,6 +320,9 @@ def main():
     if saved_config is None:
         saved_config = get_default_config()
     
+    # Load available price models
+    available_models = load_price_models()
+    
     # Initialize session state with saved config if not already initialized
     if 'config_loaded' not in st.session_state:
         st.session_state.fixed_cost = saved_config['fixed_cost']
@@ -252,6 +331,7 @@ def main():
         st.session_state.prices_include_vat = saved_config['prices_include_vat']
         st.session_state.currency = saved_config.get('currency', 'SEK')
         st.session_state.tariffs = saved_config['tariffs']
+        st.session_state.selected_price_model = saved_config.get('selected_price_model', 'custom')
         st.session_state.config_loaded = True
         st.session_state.config_source = config_source
     
@@ -259,7 +339,7 @@ def main():
     st.header("📁 Upload Usage Data")
     uploaded_file = st.file_uploader(
         "Choose a CSV file with hourly electricity usage data",
-        type=['csv'],
+        #type=['csv'],
         help="CSV should contain columns for datetime and kWh usage"
     )
     
@@ -300,6 +380,48 @@ def main():
             
             # Billing parameters section
             st.header("💰 Billing Parameters")
+            
+            # Price model selector
+            st.subheader("🏢 Price Model Selection")
+            
+            # Create options for price model dropdown
+            model_options = ["custom"] + list(available_models.keys())
+            model_display_names = ["Custom Configuration"] + [available_models[key]['name'] for key in available_models.keys()]
+            model_display_dict = dict(zip(model_options, model_display_names))
+            
+            selected_model = st.selectbox(
+                "Select a predefined price model or use custom configuration",
+                options=model_options,
+                format_func=lambda x: model_display_dict[x],
+                index=model_options.index(st.session_state.get('selected_price_model', 'custom')),
+                key="price_model_selector",
+                help="Choose a predefined electricity pricing model or configure manually"
+            )
+            
+            # Handle price model selection
+            if selected_model != st.session_state.get('selected_price_model', 'custom'):
+                if selected_model != "custom" and selected_model in available_models:
+                    # Load the selected price model
+                    model_config = convert_price_model_to_config(available_models[selected_model])
+                    if model_config:
+                        st.session_state.fixed_cost = model_config['fixed_cost']
+                        st.session_state.usage_rate = model_config['usage_rate']
+                        st.session_state.vat_rate = model_config['vat_rate']
+                        st.session_state.prices_include_vat = model_config['prices_include_vat']
+                        st.session_state.currency = model_config['currency']
+                        st.session_state.tariffs = model_config['tariffs']
+                        st.success(f"Loaded price model: {available_models[selected_model]['name']}")
+                        st.session_state.config_source = "price_model"
+                
+                st.session_state.selected_price_model = selected_model
+                st.rerun()
+            
+            # Show current model info
+            if selected_model != "custom":
+                model_info = available_models.get(selected_model, {})
+                st.info(f"📋 Using price model: **{model_info.get('name', 'Unknown')}**\n\nYou can still adjust the values below as needed.")
+            else:
+                st.info("📝 Using custom configuration. Set your pricing parameters below.")
             
             col1, col2 = st.columns(2)
             
@@ -372,6 +494,7 @@ def main():
                             'vat_rate': vat_rate,
                             'prices_include_vat': prices_include_vat,
                             'currency': selected_currency,
+                            'selected_price_model': st.session_state.get('selected_price_model', 'custom'),
                             'tariffs': st.session_state.tariffs
                         }
                         save_config_to_browser(config)
@@ -388,6 +511,7 @@ def main():
                             st.session_state.vat_rate = saved_config['vat_rate']
                             st.session_state.prices_include_vat = saved_config['prices_include_vat']
                             st.session_state.currency = saved_config.get('currency', 'SEK')
+                            st.session_state.selected_price_model = saved_config.get('selected_price_model', 'custom')
                             st.session_state.tariffs = saved_config['tariffs']
                             st.session_state.config_source = "saved"
                             st.success("Configuration loaded!")
@@ -403,6 +527,7 @@ def main():
                         st.session_state.vat_rate = default_config['vat_rate']
                         st.session_state.prices_include_vat = default_config['prices_include_vat']
                         st.session_state.currency = default_config['currency']
+                        st.session_state.selected_price_model = default_config['selected_price_model']
                         st.session_state.tariffs = default_config['tariffs']
                         st.session_state.config_source = "default"
                         st.success("Configuration reset to defaults!")
@@ -412,6 +537,13 @@ def main():
                 if hasattr(st.session_state, 'config_source'):
                     if st.session_state.config_source == "saved":
                         st.info("📁 Using saved configuration from browser storage")
+                    elif st.session_state.config_source == "price_model":
+                        current_model = st.session_state.get('selected_price_model', 'custom')
+                        if current_model != 'custom' and current_model in available_models:
+                            model_name = available_models[current_model]['name']
+                            st.info(f"🏢 Using price model: {model_name}")
+                        else:
+                            st.info("⚙️ Using custom configuration")
                     else:
                         st.info("⚙️ Using default configuration")
             

@@ -1,0 +1,23 @@
+{
+    "name": "Jönköping Energi, 20 A",
+    "currency": "SEK",
+    "tax_rate": 0.25,
+    "prices_include_tax": true,
+    "fixed_fee_per_month": 351,
+    "usage_fee_per_kwh": 0.0608,
+    "power_tariffs": [
+        {
+            "name": "Baslast",
+            "fee_per_kw": 27.7,
+            "number_of_top_peaks_to_average": 2
+        },
+        {
+            "name": "Höglast",
+            "fee_per_kw": 65.66,
+            "number_of_top_peaks_to_average": 2,
+            "months": [11, 12, 1, 2, 3],
+            "start_time": "07:00",
+            "end_time": "22:00"
+        }
+    ]
+}
