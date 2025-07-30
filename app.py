@@ -218,9 +218,9 @@ def convert_price_model_to_config(model_data):
             return int(time_str.split(':')[0])
         
         config = {
-            'fixed_cost': model_data.get('fixed_fee_per_month', 100.0),
-            'usage_rate': model_data.get('usage_fee_per_kwh', 1.20),
-            'vat_rate': model_data.get('tax_rate', 0.25) * 100,  # Convert from decimal to percentage
+            'fixed_cost': float(model_data.get('fixed_fee_per_month', 100.0)),
+            'usage_rate': float(model_data.get('usage_fee_per_kwh', 1.20)),
+            'vat_rate': float(model_data.get('tax_rate', 0.25)) * 100.0,  # Convert from decimal to percentage
             'prices_include_vat': model_data.get('prices_include_tax', False),
             'currency': model_data.get('currency', 'SEK'),
             'tariffs': []
@@ -231,8 +231,8 @@ def convert_price_model_to_config(model_data):
             tariff_config = {
                 'name': tariff.get('name', 'Unnamed Tariff'),
                 'enabled': True,
-                'top_n': tariff.get('number_of_top_peaks_to_average', 3),
-                'rate': tariff.get('fee_per_kw', 50.0),
+                'top_n': int(tariff.get('number_of_top_peaks_to_average', 3)),
+                'rate': float(tariff.get('fee_per_kw', 50.0)),
                 'months': tariff.get('months', []),
                 'hours': []
             }
