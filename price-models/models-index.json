@@ -2,7 +2,8 @@
     "models": [
         "jönköping-energi-20a.json",
         "vattenfall-standard.json",
-        "e-on-basic.json"
+        "e-on-basic.json",
+        "ellevio-standard.json"
     ],
     "last_updated": "2025-07-30"
 }

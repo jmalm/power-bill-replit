@@ -1,0 +1,19 @@
+{
+    "name": "Ellevio Standard",
+    "currency": "SEK",
+    "tax_rate": 0.25,
+    "prices_include_tax": true,
+    "fixed_fee_per_month": 280.00,
+    "usage_fee_per_kwh": 0.0580,
+    "power_tariffs": [
+        {
+            "name": "Effektavgift",
+            "fee_per_kw": 48.00,
+            "number_of_top_peaks_to_average": 3,
+            "peak_calculation_method": "night_reduced",
+            "night_reduction_factor": 0.5,
+            "night_start_time": "22:00",
+            "night_end_time": "06:00"
+        }
+    ]
+}

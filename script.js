@@ -257,6 +257,9 @@ function addTariff(tariffData = null) {
     const container = document.getElementById('tariffsContainer');
     const tariffId = 'tariff_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     
+    // Setup night time settings visibility
+    setTimeout(() => setupTariffEventListeners(tariffId), 10);
+    
     const tariffHtml = `
         <div class="tariff-item" id="${tariffId}">
             <div class="tariff-header">
@@ -281,6 +284,31 @@ function addTariff(tariffData = null) {
                 <div class="form-group">
                     <label>Rate (per kW):</label>
                     <input type="number" class="tariff-rate" step="0.01" min="0" value="${tariffData?.fee_per_kw || 50.0}">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Calculation Method:</label>
+                    <select class="tariff-method">
+                        <option value="standard" ${(!tariffData?.peak_calculation_method || tariffData?.peak_calculation_method === 'standard') ? 'selected' : ''}>Standard</option>
+                        <option value="night_reduced" ${tariffData?.peak_calculation_method === 'night_reduced' ? 'selected' : ''}>Night Reduced (Ellevio style)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Night Reduction Factor:</label>
+                    <input type="number" class="tariff-night-factor" step="0.1" min="0" max="1" value="${tariffData?.night_reduction_factor || 0.5}" placeholder="0.5">
+                </div>
+            </div>
+            
+            <div class="form-row night-time-settings" style="display: ${tariffData?.peak_calculation_method === 'night_reduced' ? 'grid' : 'none'};">
+                <div class="form-group">
+                    <label>Night Start Time:</label>
+                    <input type="time" class="tariff-night-start" value="${tariffData?.night_start_time || '22:00'}">
+                </div>
+                <div class="form-group">
+                    <label>Night End Time:</label>
+                    <input type="time" class="tariff-night-end" value="${tariffData?.night_end_time || '06:00'}">
                 </div>
             </div>
             
@@ -328,6 +356,18 @@ function generateMonthCheckboxes(tariffId, activeMonths = []) {
             </div>
         `;
     }).join('');
+}
+
+// Setup event listeners for tariff
+function setupTariffEventListeners(tariffId) {
+    const methodSelect = document.querySelector(`#${tariffId} .tariff-method`);
+    const nightSettings = document.querySelector(`#${tariffId} .night-time-settings`);
+    
+    if (methodSelect && nightSettings) {
+        methodSelect.addEventListener('change', function() {
+            nightSettings.style.display = this.value === 'night_reduced' ? 'grid' : 'none';
+        });
+    }
 }
 
 // Remove tariff
@@ -431,13 +471,23 @@ function getCurrentConfiguration() {
             }
         }
         
+        // Get advanced calculation settings
+        const calculationMethod = tariffDiv.querySelector('.tariff-method').value;
+        const nightFactor = parseFloat(tariffDiv.querySelector('.tariff-night-factor').value);
+        const nightStart = tariffDiv.querySelector('.tariff-night-start').value;
+        const nightEnd = tariffDiv.querySelector('.tariff-night-end').value;
+        
         tariffs.push({
             enabled,
             name,
             top_n: topN,
             rate,
             months,
-            hours
+            hours,
+            peak_calculation_method: calculationMethod,
+            night_reduction_factor: nightFactor,
+            night_start_time: nightStart,
+            night_end_time: nightEnd
         });
     });
     
@@ -504,6 +554,31 @@ function addTariffFromConfig(tariffConfig) {
                 </div>
             </div>
             
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Calculation Method:</label>
+                    <select class="tariff-method">
+                        <option value="standard" ${(!tariffConfig.peak_calculation_method || tariffConfig.peak_calculation_method === 'standard') ? 'selected' : ''}>Standard</option>
+                        <option value="night_reduced" ${tariffConfig.peak_calculation_method === 'night_reduced' ? 'selected' : ''}>Night Reduced (Ellevio style)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Night Reduction Factor:</label>
+                    <input type="number" class="tariff-night-factor" step="0.1" min="0" max="1" value="${tariffConfig.night_reduction_factor || 0.5}" placeholder="0.5">
+                </div>
+            </div>
+            
+            <div class="form-row night-time-settings" style="display: ${tariffConfig.peak_calculation_method === 'night_reduced' ? 'grid' : 'none'};">
+                <div class="form-group">
+                    <label>Night Start Time:</label>
+                    <input type="time" class="tariff-night-start" value="${tariffConfig.night_start_time || '22:00'}">
+                </div>
+                <div class="form-group">
+                    <label>Night End Time:</label>
+                    <input type="time" class="tariff-night-end" value="${tariffConfig.night_end_time || '06:00'}">
+                </div>
+            </div>
+            
             <div class="restrictions-section">
                 <h4>Time and Month Restrictions (optional)</h4>
                 
@@ -529,6 +604,9 @@ function addTariffFromConfig(tariffConfig) {
     `;
     
     container.insertAdjacentHTML('beforeend', tariffHtml);
+    
+    // Setup event listeners for this tariff
+    setTimeout(() => setupTariffEventListeners(tariffId), 10);
 }
 
 // Get time string from hours array
@@ -910,7 +988,12 @@ function calculatePowerTariffCost(data, tariff) {
     
     if (filteredData.length === 0) return 0;
     
-    // Group by date and find daily peaks
+    // Handle special calculation methods
+    if (tariff.peak_calculation_method === 'night_reduced') {
+        return calculateNightReducedPeaks(filteredData, tariff);
+    }
+    
+    // Standard calculation: Group by date and find daily peaks
     const dailyPeaks = {};
     filteredData.forEach(row => {
         const dateKey = row.datetime.toDateString();
@@ -926,6 +1009,53 @@ function calculatePowerTariffCost(data, tariff) {
     
     const averagePeak = peaks.reduce((sum, peak) => sum + peak, 0) / peaks.length;
     return averagePeak * tariff.rate;
+}
+
+// Calculate peaks with night reduction (e.g., Ellevio model)
+function calculateNightReducedPeaks(data, tariff) {
+    const nightStart = tariff.night_start_time ? timeToHour(tariff.night_start_time) : 22;
+    const nightEnd = tariff.night_end_time ? timeToHour(tariff.night_end_time) : 6;
+    const reductionFactor = tariff.night_reduction_factor || 0.5;
+    
+    // Group by date and find daily peaks with night reduction
+    const dailyPeaks = {};
+    
+    data.forEach(row => {
+        const dateKey = row.datetime.toDateString();
+        const hour = row.datetime.getHours();
+        
+        // Determine if this is night time (considering it might wrap around midnight)
+        let isNightTime;
+        if (nightStart > nightEnd) {
+            // Night period wraps around midnight (e.g., 22:00 to 06:00)
+            isNightTime = hour >= nightStart || hour < nightEnd;
+        } else {
+            // Night period within same day
+            isNightTime = hour >= nightStart && hour < nightEnd;
+        }
+        
+        // Apply night reduction if applicable
+        const effectiveUsage = isNightTime ? row.usage * reductionFactor : row.usage;
+        
+        if (!dailyPeaks[dateKey] || effectiveUsage > dailyPeaks[dateKey].effectiveUsage) {
+            dailyPeaks[dateKey] = {
+                effectiveUsage: effectiveUsage,
+                originalUsage: row.usage,
+                isNightPeak: isNightTime,
+                hour: hour
+            };
+        }
+    });
+    
+    // Get top N effective peaks from different days
+    const peakValues = Object.values(dailyPeaks)
+        .sort((a, b) => b.effectiveUsage - a.effectiveUsage)
+        .slice(0, tariff.top_n || 3);
+    
+    if (peakValues.length === 0) return 0;
+    
+    const averageEffectivePeak = peakValues.reduce((sum, peak) => sum + peak.effectiveUsage, 0) / peakValues.length;
+    return averageEffectivePeak * tariff.rate;
 }
 
 // Get days in dataset
