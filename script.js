@@ -472,19 +472,51 @@ function handleFile(file) {
 // Parse CSV text
 function parseCSV(csvText) {
     const lines = csvText.trim().split('\n');
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    if (lines.length < 2) {
+        throw new Error('CSV file must have at least a header row and one data row');
+    }
+    
+    // Parse CSV with proper handling of quoted fields
+    const headers = parseCSVLine(lines[0]);
     
     const data = [];
     for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-        const row = {};
-        headers.forEach((header, index) => {
-            row[header] = values[index];
-        });
-        data.push(row);
+        if (lines[i].trim()) { // Skip empty lines
+            const values = parseCSVLine(lines[i]);
+            if (values.length === headers.length) {
+                const row = {};
+                headers.forEach((header, index) => {
+                    row[header] = values[index];
+                });
+                data.push(row);
+            }
+        }
     }
     
     return data;
+}
+
+// Parse a single CSV line handling quoted fields
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    
+    result.push(current.trim());
+    return result;
 }
 
 // Validate CSV data
@@ -495,59 +527,131 @@ function validateCSVData(data) {
     }
     
     const headers = Object.keys(data[0]);
+    console.log('CSV Headers found:', headers);
     
-    // Find datetime column
-    const datetimeColumn = headers.find(h => 
-        h.toLowerCase().includes('date') || 
-        h.toLowerCase().includes('time') ||
-        h.toLowerCase().includes('timestamp')
-    );
+    // Find datetime column with more flexible matching
+    const datetimeColumn = headers.find(h => {
+        const lower = h.toLowerCase();
+        return lower.includes('date') || 
+               lower.includes('time') ||
+               lower.includes('timestamp') ||
+               lower.includes('datetime') ||
+               lower === 'dt' ||
+               lower === 'ts';
+    });
     
-    // Find usage column
-    const usageColumn = headers.find(h => 
-        h.toLowerCase().includes('kwh') || 
-        h.toLowerCase().includes('usage') ||
-        h.toLowerCase().includes('consumption') ||
-        h.toLowerCase().includes('energy')
-    );
+    // Find usage column with more flexible matching
+    let usageColumn = headers.find(h => {
+        const lower = h.toLowerCase();
+        return lower.includes('kwh') || 
+               lower.includes('usage') ||
+               lower.includes('consumption') ||
+               lower.includes('energy') ||
+               lower.includes('power') ||
+               lower.includes('load') ||
+               lower.includes('wh') ||
+               lower === 'usage' ||
+               lower === 'energy' ||
+               lower === 'power' ||
+               lower === 'load';
+    });
+    
+    // If no clear usage column found, try to find numeric columns
+    if (!usageColumn) {
+        usageColumn = headers.find(h => {
+            if (h === datetimeColumn) return false; // Skip datetime column
+            // Check if most values in this column are numeric
+            let numericCount = 0;
+            const sampleSize = Math.min(10, data.length);
+            for (let i = 0; i < sampleSize; i++) {
+                if (!isNaN(parseFloat(data[i][h])) && data[i][h] !== '') {
+                    numericCount++;
+                }
+            }
+            return numericCount >= sampleSize * 0.7; // 70% numeric values
+        });
+    }
+    
+    console.log('Detected datetime column:', datetimeColumn);
+    console.log('Detected usage column:', usageColumn);
     
     if (!datetimeColumn) {
-        showValidationError('Could not find datetime column. Please ensure your CSV has a column with "date", "time", or "timestamp" in the name.');
+        showValidationError(`Could not find datetime column. Available columns: ${headers.join(', ')}. Please ensure your CSV has a column with "date", "time", or "timestamp" in the name.`);
         return false;
     }
     
     if (!usageColumn) {
-        showValidationError('Could not find usage column. Please ensure your CSV has a column with "kWh", "usage", "consumption", or "energy" in the name.');
+        showValidationError(`Could not find usage column. Available columns: ${headers.join(', ')}. Please ensure your CSV has a column with "kWh", "usage", "consumption", or "energy" in the name.`);
         return false;
     }
     
+    // Show sample data for debugging
+    console.log('Sample data rows:', data.slice(0, 3));
+    
     // Validate data types
     let validRows = 0;
+    let sampleErrors = [];
+    
     data.forEach((row, index) => {
         const dateStr = row[datetimeColumn];
         const usageStr = row[usageColumn];
         
         if (dateStr && usageStr) {
-            const date = new Date(dateStr);
-            const usage = parseFloat(usageStr);
+            // Try multiple date parsing approaches
+            let date = new Date(dateStr);
             
-            if (!isNaN(date.getTime()) && !isNaN(usage)) {
+            // If direct parsing fails, try different formats
+            if (isNaN(date.getTime())) {
+                // Try ISO format
+                date = new Date(dateStr.replace(' ', 'T'));
+                
+                // Try reversing date format (DD/MM/YYYY to MM/DD/YYYY)
+                if (isNaN(date.getTime()) && dateStr.includes('/')) {
+                    const parts = dateStr.split(/[\/\s]/);
+                    if (parts.length >= 3) {
+                        // Try MM/DD/YYYY format
+                        date = new Date(`${parts[1]}/${parts[0]}/${parts[2]}${parts.length > 3 ? ' ' + parts.slice(3).join(' ') : ''}`);
+                    }
+                }
+                
+                // Try with explicit parsing for European format
+                if (isNaN(date.getTime()) && dateStr.match(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
+                    const match = dateStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})(.*)$/);
+                    if (match) {
+                        date = new Date(`${match[2]}/${match[1]}/${match[3]}${match[4] || ''}`);
+                    }
+                }
+            }
+            
+            const usage = parseFloat(usageStr.replace(',', '.')); // Handle European decimal separator
+            
+            if (!isNaN(date.getTime()) && !isNaN(usage) && usage >= 0) {
                 row.datetime = date;
                 row.usage = usage;
                 validRows++;
+            } else if (sampleErrors.length < 3) {
+                sampleErrors.push(`Row ${index + 1}: date="${dateStr}" (parsed: ${date}), usage="${usageStr}" (parsed: ${usage})`);
             }
         }
     });
     
+    console.log('Valid rows:', validRows, 'out of', data.length);
+    if (sampleErrors.length > 0) {
+        console.log('Sample parsing errors:', sampleErrors);
+    }
+    
     if (validRows === 0) {
-        showValidationError('No valid data rows found. Please check your datetime and usage column formats.');
+        showValidationError(`No valid data rows found. Sample parsing issues: ${sampleErrors.join('; ')}. Please check your datetime and usage column formats.`);
         return false;
     }
     
-    if (validRows < data.length * 0.9) {
-        showValidationError(`Only ${validRows} out of ${data.length} rows are valid. Please check your data format.`);
+    if (validRows < data.length * 0.5) {
+        showValidationError(`Only ${validRows} out of ${data.length} rows are valid (${Math.round(validRows/data.length*100)}%). Sample issues: ${sampleErrors.slice(0,2).join('; ')}. Please check your data format.`);
         return false;
     }
+    
+    // Filter data to keep only valid rows
+    csvData = data.filter(row => row.datetime && !isNaN(row.usage));
     
     clearValidationError();
     return true;
