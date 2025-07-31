@@ -83,41 +83,7 @@ async function loadPriceModels() {
         }
     }
     
-    // Try additional discovery patterns for common naming conventions
-    const discoveryPatterns = [
-        // Country-based patterns
-        'sweden-electricity.json', 'norway-electricity.json', 'denmark-electricity.json',
-        'finland-electricity.json', 'germany-electricity.json', 'netherlands-electricity.json',
-        // Provider patterns
-        'energi-standard.json', 'kraft-basic.json', 'power-residential.json',
-        // Generic patterns
-        'default-tariff.json', 'standard-pricing.json', 'residential-plan.json'
-    ];
-    
-    for (const filename of discoveryPatterns) {
-        try {
-            const response = await fetch(`price-models/${filename}`);
-            if (response.ok) {
-                const modelData = await response.json();
-                const modelKey = filename.replace('.json', '').toLowerCase().replace(/[^a-z0-9-]/g, '-');
-                
-                // Only add if not already loaded and valid
-                if (!availableModels[modelKey] && validatePriceModel(modelData)) {
-                    availableModels[modelKey] = modelData;
-                    
-                    const option = document.createElement('option');
-                    option.value = modelKey;
-                    option.textContent = modelData.name || filename.replace('.json', '');
-                    priceModelSelect.appendChild(option);
-                    
-                    modelsLoaded++;
-                    console.log(`Discovered price model: ${modelData.name || filename}`);
-                }
-            }
-        } catch (error) {
-            // Silently continue for discovery patterns
-        }
-    }
+
     
     if (modelsLoaded > 0) {
         console.log(`Successfully loaded ${modelsLoaded} price models`);
