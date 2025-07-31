@@ -616,6 +616,24 @@ function getCurrentConfiguration() {
     };
 }
 
+function excludeVAT(config) {
+    // Convert all costs and rates to exclude VAT if necessary
+    if (config.prices_include_vat) {
+        const vatFactor = 1 + config.vat_rate / 100;
+        return {
+            ...config,
+            fixed_cost: config.fixed_cost / vatFactor,
+            usage_rate: config.usage_rate / vatFactor,
+            tariffs: config.tariffs.map(tariff => ({
+                ...tariff,
+                rate: tariff.rate / vatFactor
+            })),
+            prices_include_vat: false // Always return model without VAT included
+        };
+    }
+    return config; // Already in correct format
+}
+
 // Load configuration
 function loadConfiguration(config) {
     document.getElementById('currency').value = config.currency || 'SEK';
@@ -1144,6 +1162,8 @@ function processData() {
 function calculateCosts(data, config) {
     // Filter valid data
     const validData = data.filter(row => row.datetime && !isNaN(row.usage));
+
+    config = excludeVAT(config);
     
     // Calculate basic costs
     const totalUsage = validData.reduce((sum, row) => sum + row.usage, 0);
@@ -1170,11 +1190,9 @@ function calculateCosts(data, config) {
     
     // Calculate subtotal and VAT
     const subtotal = monthlyFixedCost + usageCost + totalTariffCost;
-    const vatAmount = config.prices_include_vat ? 
-        subtotal * (config.vat_rate / 100) / (1 + config.vat_rate / 100) :
-        subtotal * (config.vat_rate / 100);
-    const netAmount = config.prices_include_vat ? subtotal - vatAmount : subtotal;
-    const total = config.prices_include_vat ? subtotal : subtotal + vatAmount;
+    const vatAmount = subtotal * (config.vat_rate / 100);
+    const netAmount = subtotal;
+    const total = subtotal + vatAmount;
     
     return {
         totalUsage,
@@ -1399,6 +1417,7 @@ function findPeakHours(data, tariffs) {
 
 // Display cost breakdown
 function displayCostBreakdown(results, config) {
+    config = excludeVAT(config);
     const currency = config.currency;
     
     let html = '<table class="cost-table">';
@@ -1406,7 +1425,7 @@ function displayCostBreakdown(results, config) {
     html += '<tbody>';
     
     // Fixed cost
-    html += `<tr><td>Monthly Fixed Cost</td><td>Base service fee</td><td>${formatCurrency(results.monthlyFixedCost, currency)}</td></tr>`;
+    html += `<tr><td>Monthly Fixed Cost</td><td/><td>${formatCurrency(results.monthlyFixedCost, currency)}</td></tr>`;
     
     // Usage cost
     html += `<tr><td>Usage Cost</td><td>${results.totalUsage.toFixed(2)} kWh × ${formatCurrency(config.usage_rate, currency)}/kWh</td><td>${formatCurrency(results.usageCost, currency)}</td></tr>`;
