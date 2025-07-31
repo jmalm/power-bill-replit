@@ -10,7 +10,6 @@
             "name": "Effektavgift",
             "fee_per_kw": 48.00,
             "number_of_top_peaks_to_average": 3,
-            "peak_calculation_method": "night_reduced",
             "night_reduction_factor": 0.5,
             "night_start_time": "22:00",
             "night_end_time": "06:00"

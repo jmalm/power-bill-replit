@@ -243,6 +243,20 @@ input[type="checkbox"] {
     margin: 0;
 }
 
+.night-reduction-section {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e1e8ed;
+}
+
+.night-reduction-settings {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e1e8ed;
+}
+
 /* Config Actions */
 .config-actions {
     display: flex;

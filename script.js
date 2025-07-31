@@ -306,7 +306,10 @@ function hasConfigurationChanged() {
             current.rate !== original.rate ||
             current.top_n !== original.top_n ||
             JSON.stringify(current.months) !== JSON.stringify(original.months) ||
-            JSON.stringify(current.hours) !== JSON.stringify(original.hours)) {
+            JSON.stringify(current.hours) !== JSON.stringify(original.hours) ||
+            current.night_reduction_factor !== original.night_reduction_factor ||
+            current.night_start_time !== original.night_start_time ||
+            current.night_end_time !== original.night_end_time) {
             return true;
         }
     }
@@ -349,31 +352,6 @@ function addTariff(tariffData = null) {
                 </div>
             </div>
             
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Calculation Method:</label>
-                    <select class="tariff-method">
-                        <option value="standard" ${(!tariffData?.peak_calculation_method || tariffData?.peak_calculation_method === 'standard') ? 'selected' : ''}>Standard</option>
-                        <option value="night_reduced" ${tariffData?.peak_calculation_method === 'night_reduced' ? 'selected' : ''}>Night Reduced (Ellevio style)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Night Reduction Factor:</label>
-                    <input type="number" class="tariff-night-factor" step="0.1" min="0" max="1" value="${tariffData?.night_reduction_factor || 0.5}" placeholder="0.5">
-                </div>
-            </div>
-            
-            <div class="form-row night-time-settings" style="display: ${tariffData?.peak_calculation_method === 'night_reduced' ? 'grid' : 'none'};">
-                <div class="form-group">
-                    <label>Night Start Time:</label>
-                    <input type="time" class="tariff-night-start" value="${tariffData?.night_start_time || '22:00'}">
-                </div>
-                <div class="form-group">
-                    <label>Night End Time:</label>
-                    <input type="time" class="tariff-night-end" value="${tariffData?.night_end_time || '06:00'}">
-                </div>
-            </div>
-            
             <div class="restrictions-section">
                 <h4>Time and Month Restrictions (optional)</h4>
                 
@@ -395,6 +373,35 @@ function addTariff(tariffData = null) {
                     </div>
                 </div>
             </div>
+            
+            <div class="night-reduction-section">
+                <h4>Night-time Reduction (optional)</h4>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" class="night-reduction-enabled" ${tariffData?.night_reduction_factor ? 'checked' : ''}>
+                        Enable night-time reduction
+                    </label>
+                </div>
+                
+                <div class="night-reduction-settings" style="display: ${tariffData?.night_reduction_factor ? 'block' : 'none'};">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Night-time Reduction Factor:</label>
+                            <input type="number" class="tariff-night-factor" step="0.1" min="0" max="1" value="${tariffData?.night_reduction_factor || 0.5}" placeholder="0.5">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Night Start Time:</label>
+                            <input type="time" class="tariff-night-start" value="${tariffData?.night_start_time || '22:00'}">
+                        </div>
+                        <div class="form-group">
+                            <label>Night End Time:</label>
+                            <input type="time" class="tariff-night-end" value="${tariffData?.night_end_time || '06:00'}">
+                        </div>
+                    </div>
+                </div>
         </div>
     `;
     
@@ -425,12 +432,12 @@ function generateMonthCheckboxes(tariffId, activeMonths = []) {
 
 // Setup event listeners for tariff
 function setupTariffEventListeners(tariffId) {
-    const methodSelect = document.querySelector(`#${tariffId} .tariff-method`);
-    const nightSettings = document.querySelector(`#${tariffId} .night-time-settings`);
+    const nightReductionCheckbox = document.querySelector(`#${tariffId} .night-reduction-enabled`);
+    const nightSettings = document.querySelector(`#${tariffId} .night-reduction-settings`);
     
-    if (methodSelect && nightSettings) {
-        methodSelect.addEventListener('change', function() {
-            nightSettings.style.display = this.value === 'night_reduced' ? 'grid' : 'none';
+    if (nightReductionCheckbox && nightSettings) {
+        nightReductionCheckbox.addEventListener('change', function() {
+            nightSettings.style.display = this.checked ? 'block' : 'none';
             handleConfigurationChange();
         });
     }
@@ -579,11 +586,11 @@ function getCurrentConfiguration() {
             }
         }
         
-        // Get advanced calculation settings
-        const calculationMethod = tariffDiv.querySelector('.tariff-method').value;
-        const nightFactor = parseFloat(tariffDiv.querySelector('.tariff-night-factor').value);
-        const nightStart = tariffDiv.querySelector('.tariff-night-start').value;
-        const nightEnd = tariffDiv.querySelector('.tariff-night-end').value;
+        // Get night reduction settings
+        const nightReductionEnabled = tariffDiv.querySelector('.night-reduction-enabled').checked;
+        const nightFactor = nightReductionEnabled ? parseFloat(tariffDiv.querySelector('.tariff-night-factor').value) : null;
+        const nightStart = nightReductionEnabled ? tariffDiv.querySelector('.tariff-night-start').value : null;
+        const nightEnd = nightReductionEnabled ? tariffDiv.querySelector('.tariff-night-end').value : null;
         
         tariffs.push({
             enabled,
@@ -592,7 +599,6 @@ function getCurrentConfiguration() {
             rate,
             months,
             hours,
-            peak_calculation_method: calculationMethod,
             night_reduction_factor: nightFactor,
             night_start_time: nightStart,
             night_end_time: nightEnd
@@ -666,28 +672,55 @@ function addTariffFromConfig(tariffConfig) {
                 </div>
             </div>
             
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Calculation Method:</label>
-                    <select class="tariff-method">
-                        <option value="standard" ${(!tariffConfig.peak_calculation_method || tariffConfig.peak_calculation_method === 'standard') ? 'selected' : ''}>Standard</option>
-                        <option value="night_reduced" ${tariffConfig.peak_calculation_method === 'night_reduced' ? 'selected' : ''}>Night Reduced (Ellevio style)</option>
-                    </select>
+            <div class="restrictions-section">
+                <h4>Time and Month Restrictions (optional)</h4>
+                
+                <div class="restrictions-row">
+                    <div class="form-group">
+                        <label>Start Time (24h format):</label>
+                        <input type="time" class="tariff-start-time" value="${getTimeFromHours(tariffConfig.hours, 'start')}">
+                    </div>
+                    <div class="form-group">
+                        <label>End Time (24h format):</label>
+                        <input type="time" class="tariff-end-time" value="${getTimeFromHours(tariffConfig.hours, 'end')}">
+                    </div>
                 </div>
+                
                 <div class="form-group">
-                    <label>Night Reduction Factor:</label>
-                    <input type="number" class="tariff-night-factor" step="0.1" min="0" max="1" value="${tariffConfig.night_reduction_factor || 0.5}" placeholder="0.5">
+                    <label>Active Months:</label>
+                    <div class="checkbox-group">
+                        ${generateMonthCheckboxes(tariffId, tariffConfig.months || [])}
+                    </div>
                 </div>
             </div>
             
-            <div class="form-row night-time-settings" style="display: ${tariffConfig.peak_calculation_method === 'night_reduced' ? 'grid' : 'none'};">
+            <div class="night-reduction-section">
+                <h4>Night-time Reduction (optional)</h4>
                 <div class="form-group">
-                    <label>Night Start Time:</label>
-                    <input type="time" class="tariff-night-start" value="${tariffConfig.night_start_time || '22:00'}">
+                    <label>
+                        <input type="checkbox" class="night-reduction-enabled" ${tariffConfig.night_reduction_factor ? 'checked' : ''}>
+                        Enable night-time reduction
+                    </label>
                 </div>
-                <div class="form-group">
-                    <label>Night End Time:</label>
-                    <input type="time" class="tariff-night-end" value="${tariffConfig.night_end_time || '06:00'}">
+                
+                <div class="night-reduction-settings" style="display: ${tariffConfig.night_reduction_factor ? 'block' : 'none'};">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Night-time Reduction Factor:</label>
+                            <input type="number" class="tariff-night-factor" step="0.1" min="0" max="1" value="${tariffConfig.night_reduction_factor || 0.5}" placeholder="0.5">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Night Start Time:</label>
+                            <input type="time" class="tariff-night-start" value="${tariffConfig.night_start_time || '22:00'}">
+                        </div>
+                        <div class="form-group">
+                            <label>Night End Time:</label>
+                            <input type="time" class="tariff-night-end" value="${tariffConfig.night_end_time || '06:00'}">
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -1176,8 +1209,8 @@ function calculatePowerTariffCost(data, tariff) {
     
     if (filteredData.length === 0) return 0;
     
-    // Handle special calculation methods
-    if (tariff.peak_calculation_method === 'night_reduced') {
+    // Handle night reduction if enabled
+    if (tariff.night_reduction_factor) {
         return calculateNightReducedPeaks(filteredData, tariff);
     }
     
@@ -1517,6 +1550,13 @@ function convertConfigToPriceModel(config, modelName) {
         if (timeRange) {
             tariffModel.start_time = timeRange.start_time;
             tariffModel.end_time = timeRange.end_time;
+        }
+        
+        // Add night reduction settings if enabled
+        if (tariff.night_reduction_factor) {
+            tariffModel.night_reduction_factor = tariff.night_reduction_factor;
+            tariffModel.night_start_time = tariff.night_start_time;
+            tariffModel.night_end_time = tariff.night_end_time;
         }
         
         priceModel.power_tariffs.push(tariffModel);
