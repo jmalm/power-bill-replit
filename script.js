@@ -7,9 +7,10 @@ let originalModelConfig = null; // Store the original configuration when a model
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
-    loadPriceModels();
     setupEventListeners();
-    loadSavedConfiguration();
+    loadPriceModels().then(() => {
+        loadSavedConfigurationAndModel();
+    });
 });
 
 // Initialize application state
@@ -165,9 +166,6 @@ function setupEventListeners() {
     
     // Configuration actions
     document.getElementById('addTariff').addEventListener('click', addTariff);
-    document.getElementById('saveConfig').addEventListener('click', saveConfiguration);
-    document.getElementById('loadConfig').addEventListener('click', loadSavedConfiguration);
-    document.getElementById('resetConfig').addEventListener('click', resetConfiguration);
     
     // Download model events
     document.getElementById('downloadModel').addEventListener('click', toggleDownloadSection);
@@ -186,6 +184,9 @@ function setupEventListeners() {
 // Handle price model selection
 function handlePriceModelChange() {
     const selectedModel = document.getElementById('priceModel').value;
+    
+    // Save the selected model
+    localStorage.setItem('electricityCalculatorSelectedModel', selectedModel);
     
     if (selectedModel === 'custom') {
         currentLoadedModel = null;
@@ -255,13 +256,17 @@ function handleConfigurationChange() {
             // Switch back to custom configuration when modified
             document.getElementById('priceModel').value = 'custom';
             currentLoadedModel = null;
+            originalModelConfig = null;
             updateConfigStatus('modified');
         } else {
-            updateConfigStatus('custom');
+            updateConfigStatus('price_model', availableModels[currentLoadedModel].name);
         }
     } else {
         updateConfigStatus('custom');
     }
+    
+    // Automatically save configuration
+    autoSaveConfiguration();
     
     // Re-run calculation and plotting if data is loaded
     if (csvData) {
@@ -454,9 +459,6 @@ function updateConfigStatus(source = 'custom', modelName = '') {
     const statusDiv = document.getElementById('configStatus');
     
     switch (source) {
-        case 'saved':
-            statusDiv.innerHTML = '<div class="status-info info">📁 Using saved configuration from browser storage</div>';
-            break;
         case 'price_model':
             statusDiv.innerHTML = `<div class="status-info info">🏢 Using price model: ${modelName}</div>`;
             break;
@@ -490,59 +492,65 @@ function updateConfigStatus(source = 'custom', modelName = '') {
 }
 
 // Save configuration to localStorage
-function saveConfiguration() {
+
+
+// Automatically save configuration to localStorage
+function autoSaveConfiguration() {
     const config = getCurrentConfiguration();
     localStorage.setItem('electricityCalculatorConfig', JSON.stringify(config));
-    
-    const statusDiv = document.getElementById('configStatus');
-    statusDiv.innerHTML = '<div class="status-info success">✅ Configuration saved successfully!</div>';
-    setTimeout(() => updateConfigStatus('saved'), 2000);
 }
 
-// Load saved configuration
-function loadSavedConfiguration() {
+// Load saved configuration and selected model
+function loadSavedConfigurationAndModel() {
+    // Load saved configuration
     const saved = localStorage.getItem('electricityCalculatorConfig');
+    const savedModel = localStorage.getItem('electricityCalculatorSelectedModel');
+    
     if (saved) {
         try {
             const config = JSON.parse(saved);
             loadConfiguration(config);
-            // Reset model tracking when loading saved config
-            currentLoadedModel = null;
-            originalModelConfig = null;
-            document.getElementById('priceModel').value = 'custom';
-            updateConfigStatus('saved');
+            
+            // If we have a saved model, try to load it
+            if (savedModel && savedModel !== 'custom') {
+                const priceModelSelect = document.getElementById('priceModel');
+                if (availableModels[savedModel]) {
+                    priceModelSelect.value = savedModel;
+                    currentLoadedModel = savedModel;
+                    originalModelConfig = getCurrentConfiguration();
+                    updateConfigStatus('price_model', availableModels[savedModel].name);
+                } else {
+                    // If saved model not found, use custom
+                    priceModelSelect.value = 'custom';
+                    currentLoadedModel = null;
+                    originalModelConfig = null;
+                    updateConfigStatus('custom');
+                }
+            } else {
+                // No saved model or custom model
+                document.getElementById('priceModel').value = 'custom';
+                currentLoadedModel = null;
+                originalModelConfig = null;
+                updateConfigStatus('custom');
+            }
         } catch (error) {
             console.error('Error loading saved configuration:', error);
+            // Fallback to defaults
+            document.getElementById('priceModel').value = 'custom';
+            currentLoadedModel = null;
+            originalModelConfig = null;
+            updateConfigStatus('custom');
         }
+    } else {
+        // No saved configuration, use defaults
+        document.getElementById('priceModel').value = 'custom';
+        currentLoadedModel = null;
+        originalModelConfig = null;
+        updateConfigStatus('custom');
     }
 }
 
-// Reset to default configuration
-function resetConfiguration() {
-    if (confirm('Are you sure you want to reset to default configuration? This will clear all current settings.')) {
-        // Reset basic settings
-        document.getElementById('currency').value = 'SEK';
-        document.getElementById('fixedCost').value = 100.00;
-        document.getElementById('usageRate').value = 1.2000;
-        document.getElementById('vatRate').value = 25.0;
-        document.getElementById('pricesIncludeVat').checked = true;
-        document.getElementById('priceModel').value = 'custom';
-        
-        // Clear and add default tariff
-        document.getElementById('tariffsContainer').innerHTML = '';
-        addTariff();
-        
-        // Reset model tracking
-        currentLoadedModel = null;
-        originalModelConfig = null;
-        
-        updateConfigStatus('default');
-        
-        const statusDiv = document.getElementById('configStatus');
-        statusDiv.innerHTML = '<div class="status-info success">✅ Configuration reset to defaults!</div>';
-        setTimeout(() => updateConfigStatus('default'), 2000);
-    }
-}
+
 
 // Get current configuration
 function getCurrentConfiguration() {
