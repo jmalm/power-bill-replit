@@ -1,6 +1,7 @@
 {
     "models": [
-        "jönköping-energi-20a.json",
+        "jönköping-energi-20-a.json",
+        "jönköping-energi-25-a.json",
         "vattenfall-standard.json",
         "e-on-basic.json",
         "ellevio-standard.json"
