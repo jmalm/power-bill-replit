@@ -1177,14 +1177,15 @@ function calculateCosts(data, config) {
     
     config.tariffs.forEach(tariff => {
         if (tariff.enabled) {
-            const cost = calculatePowerTariffCost(validData, tariff);
+            const result = calculatePowerTariffCost(validData, tariff);
             tariffCosts.push({
                 name: tariff.name,
-                cost: cost,
+                cost: result.cost,
+                averagePeak: result.averagePeak,
                 rate: tariff.rate,
                 topN: tariff.top_n
             });
-            totalTariffCost += cost;
+            totalTariffCost += result.cost;
         }
     });
     
@@ -1225,7 +1226,7 @@ function calculatePowerTariffCost(data, tariff) {
         );
     }
     
-    if (filteredData.length === 0) return 0;
+    if (filteredData.length === 0) return { cost: 0, averagePeak: 0 };
     
     // Handle night reduction if enabled
     if (tariff.night_reduction_factor) {
@@ -1247,7 +1248,8 @@ function calculatePowerTariffCost(data, tariff) {
     if (peaks.length === 0) return 0;
     
     const averagePeak = peaks.reduce((sum, peak) => sum + peak, 0) / peaks.length;
-    return averagePeak * tariff.rate;
+    const cost = averagePeak * tariff.rate;
+    return { cost: cost, averagePeak: averagePeak };
 }
 
 // Calculate peaks with night reduction (e.g., Ellevio model)
@@ -1294,7 +1296,8 @@ function calculateNightReducedPeaks(data, tariff) {
     if (peakValues.length === 0) return 0;
     
     const averageEffectivePeak = peakValues.reduce((sum, peak) => sum + peak.effectiveUsage, 0) / peakValues.length;
-    return averageEffectivePeak * tariff.rate;
+    const cost = averageEffectivePeak * tariff.rate;
+    return { cost: cost, averagePeak: averageEffectivePeak };
 }
 
 // Get days in dataset
@@ -1432,7 +1435,7 @@ function displayCostBreakdown(results, config) {
     
     // Tariff costs
     results.tariffCosts.forEach(tariff => {
-        html += `<tr><td>Power Tariff: ${tariff.name}</td><td>Top ${tariff.topN} peaks × ${formatCurrency(tariff.rate, currency)}/kW</td><td>${formatCurrency(tariff.cost, currency)}</td></tr>`;
+        html += `<tr><td>Power Tariff: ${tariff.name}</td><td>${tariff.averagePeak.toFixed(2)} kW × ${formatCurrency(tariff.rate, currency)}/kW</td><td>${formatCurrency(tariff.cost, currency)}</td></tr>`;
     });
     
     // Subtotals
