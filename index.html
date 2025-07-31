@@ -80,6 +80,23 @@
                     <button type="button" id="saveConfig" class="btn btn-primary">Save Configuration</button>
                     <button type="button" id="loadConfig" class="btn btn-secondary">Load Saved</button>
                     <button type="button" id="resetConfig" class="btn btn-danger">Reset to Defaults</button>
+                    <button type="button" id="downloadModel" class="btn btn-success">Download Model</button>
+                </div>
+                
+                <!-- Download Model Section -->
+                <div id="downloadSection" class="download-section" style="display: none;">
+                    <div class="form-group">
+                        <label for="modelName">Model Name:</label>
+                        <input type="text" id="modelName" value="Custom Configuration" placeholder="Enter model name">
+                    </div>
+                    <div class="download-actions">
+                        <button type="button" id="previewModel" class="btn btn-secondary">Preview JSON</button>
+                        <button type="button" id="downloadJson" class="btn btn-success">Download JSON</button>
+                    </div>
+                    <div id="jsonPreview" class="json-preview" style="display: none;">
+                        <h4>JSON Preview:</h4>
+                        <pre id="jsonContent"></pre>
+                    </div>
                 </div>
             </section>
 

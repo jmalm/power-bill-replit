@@ -200,6 +200,11 @@ function setupEventListeners() {
     document.getElementById('loadConfig').addEventListener('click', loadSavedConfiguration);
     document.getElementById('resetConfig').addEventListener('click', resetConfiguration);
     
+    // Download model events
+    document.getElementById('downloadModel').addEventListener('click', toggleDownloadSection);
+    document.getElementById('previewModel').addEventListener('click', previewModel);
+    document.getElementById('downloadJson').addEventListener('click', downloadModel);
+    
     // Form changes
     document.querySelectorAll('input, select').forEach(element => {
         element.addEventListener('change', updateConfigStatus);
@@ -391,6 +396,10 @@ function updateConfigStatus(source = 'custom', modelName = '') {
             break;
         case 'default':
             statusDiv.innerHTML = '<div class="status-info info">⚙️ Using default configuration</div>';
+            break;
+        case 'download':
+            statusDiv.innerHTML = `<div class="status-info success">✅ Price model "${modelName}" downloaded successfully!</div>`;
+            setTimeout(() => updateConfigStatus('custom'), 3000);
             break;
         default:
             statusDiv.innerHTML = '<div class="status-info info">⚙️ Using custom configuration</div>';
@@ -1239,4 +1248,123 @@ function formatCurrency(amount, currency) {
     });
     
     return formatter.format(amount);
+}
+
+// Download Model Functions
+function toggleDownloadSection() {
+    const downloadSection = document.getElementById('downloadSection');
+    const isVisible = downloadSection.style.display !== 'none';
+    
+    if (isVisible) {
+        downloadSection.style.display = 'none';
+        document.getElementById('jsonPreview').style.display = 'none';
+    } else {
+        downloadSection.style.display = 'block';
+    }
+}
+
+function convertConfigToPriceModel(config, modelName) {
+    // Convert hour list to time range if possible
+    function hoursToTimeRange(hours) {
+        if (!hours || hours.length === 0) {
+            return null;
+        }
+        
+        const minHour = Math.min(...hours);
+        const maxHour = Math.max(...hours);
+        
+        // Check if hours form a continuous range
+        const expectedHours = new Set();
+        for (let i = minHour; i <= maxHour; i++) {
+            expectedHours.add(i);
+        }
+        
+        const actualHours = new Set(hours);
+        if (actualHours.size === expectedHours.size && 
+            [...actualHours].every(h => expectedHours.has(h))) {
+            return {
+                start_time: `${minHour.toString().padStart(2, '0')}:00`,
+                end_time: `${maxHour.toString().padStart(2, '0')}:00`
+            };
+        }
+        
+        return null;
+    }
+    
+    const priceModel = {
+        name: modelName,
+        currency: config.currency,
+        tax_rate: config.vat_rate / 100, // Convert from percentage to decimal
+        prices_include_tax: config.prices_include_vat,
+        fixed_fee_per_month: config.fixed_cost,
+        usage_fee_per_kwh: config.usage_rate,
+        power_tariffs: []
+    };
+    
+    // Convert tariffs
+    config.tariffs.forEach(tariff => {
+        if (!tariff.enabled) {
+            return; // Skip disabled tariffs
+        }
+        
+        const timeRange = hoursToTimeRange(tariff.hours);
+        
+        const tariffModel = {
+            name: tariff.name,
+            fee_per_kw: tariff.rate,
+            number_of_top_peaks_to_average: tariff.top_n,
+            months: tariff.months || []
+        };
+        
+        // Add time range if we could convert hours to a continuous range
+        if (timeRange) {
+            tariffModel.start_time = timeRange.start_time;
+            tariffModel.end_time = timeRange.end_time;
+        }
+        
+        priceModel.power_tariffs.push(tariffModel);
+    });
+    
+    return priceModel;
+}
+
+function previewModel() {
+    const modelName = document.getElementById('modelName').value || 'Custom Configuration';
+    const config = getCurrentConfiguration();
+    const priceModel = convertConfigToPriceModel(config, modelName);
+    
+    const jsonPreview = document.getElementById('jsonPreview');
+    const jsonContent = document.getElementById('jsonContent');
+    
+    jsonContent.textContent = JSON.stringify(priceModel, null, 2);
+    jsonPreview.style.display = 'block';
+}
+
+function downloadModel() {
+    const modelName = document.getElementById('modelName').value || 'Custom Configuration';
+    const config = getCurrentConfiguration();
+    const priceModel = convertConfigToPriceModel(config, modelName);
+    
+    // Create a safe filename
+    const safeName = modelName
+        .replace(/[^a-zA-Z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .toLowerCase();
+    
+    const filename = `${safeName}.json`;
+    const jsonString = JSON.stringify(priceModel, null, 2);
+    
+    // Create and trigger download
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    // Show success message
+    updateConfigStatus('download', modelName);
 }
