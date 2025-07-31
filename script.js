@@ -1,6 +1,8 @@
 // Global variables
 let csvData = null;
 let availableModels = {};
+let currentLoadedModel = null; // Track the currently loaded price model
+let originalModelConfig = null; // Store the original configuration when a model is loaded
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -14,7 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeApp() {
     // Initialize with default tariff
     addTariff();
-    updateConfigStatus();
+    // Don't show any status initially
+    updateConfigStatus('default');
 }
 
 // Load available price models
@@ -171,9 +174,12 @@ function setupEventListeners() {
     document.getElementById('previewModel').addEventListener('click', previewModel);
     document.getElementById('downloadJson').addEventListener('click', downloadModel);
     
+    // Configuration toggle
+    document.getElementById('toggleConfig').addEventListener('click', toggleConfigurationDetails);
+    
     // Form changes
     document.querySelectorAll('input, select').forEach(element => {
-        element.addEventListener('change', updateConfigStatus);
+        element.addEventListener('change', handleConfigurationChange);
     });
 }
 
@@ -182,13 +188,27 @@ function handlePriceModelChange() {
     const selectedModel = document.getElementById('priceModel').value;
     
     if (selectedModel === 'custom') {
+        currentLoadedModel = null;
+        originalModelConfig = null;
         updateConfigStatus('custom');
+        // Re-run calculation and plotting if data is loaded
+        if (csvData) {
+            processData();
+        }
         return;
     }
     
     if (availableModels[selectedModel]) {
+        currentLoadedModel = selectedModel;
         loadPriceModel(availableModels[selectedModel]);
+        // Store the original configuration for comparison
+        originalModelConfig = getCurrentConfiguration();
         updateConfigStatus('price_model', availableModels[selectedModel].name);
+        
+        // Re-run calculation and plotting if data is loaded
+        if (csvData) {
+            processData();
+        }
     }
 }
 
@@ -216,11 +236,77 @@ function loadPriceModel(modelData) {
     if (!modelData.power_tariffs || modelData.power_tariffs.length === 0) {
         addTariff();
     }
+    
+    // Store the original configuration after loading
+    setTimeout(() => {
+        originalModelConfig = getCurrentConfiguration();
+    }, 100);
 }
 
 // Convert time string to hour number
 function timeToHour(timeStr) {
     return parseInt(timeStr.split(':')[0]);
+}
+
+// Handle configuration changes
+function handleConfigurationChange() {
+    if (currentLoadedModel && originalModelConfig) {
+        if (hasConfigurationChanged()) {
+            // Switch back to custom configuration when modified
+            document.getElementById('priceModel').value = 'custom';
+            currentLoadedModel = null;
+            updateConfigStatus('modified');
+        } else {
+            updateConfigStatus('custom');
+        }
+    } else {
+        updateConfigStatus('custom');
+    }
+    
+    // Re-run calculation and plotting if data is loaded
+    if (csvData) {
+        processData();
+    }
+}
+
+// Check if current configuration differs from the originally loaded model
+function hasConfigurationChanged() {
+    if (!originalModelConfig) return false;
+    
+    const currentConfig = getCurrentConfiguration();
+    
+    // Compare basic settings
+    if (currentConfig.currency !== originalModelConfig.currency ||
+        currentConfig.fixed_cost !== originalModelConfig.fixed_cost ||
+        currentConfig.usage_rate !== originalModelConfig.usage_rate ||
+        currentConfig.vat_rate !== originalModelConfig.vat_rate ||
+        currentConfig.prices_include_vat !== originalModelConfig.prices_include_vat) {
+        return true;
+    }
+    
+    // Compare tariffs
+    if (currentConfig.tariffs.length !== originalModelConfig.tariffs.length) {
+        return true;
+    }
+    
+    // Compare each tariff
+    for (let i = 0; i < currentConfig.tariffs.length; i++) {
+        const current = currentConfig.tariffs[i];
+        const original = originalModelConfig.tariffs[i];
+        
+        if (!original) return true;
+        
+        if (current.enabled !== original.enabled ||
+            current.name !== original.name ||
+            current.rate !== original.rate ||
+            current.top_n !== original.top_n ||
+            JSON.stringify(current.months) !== JSON.stringify(original.months) ||
+            JSON.stringify(current.hours) !== JSON.stringify(original.hours)) {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 // Add tariff to the interface
@@ -308,6 +394,9 @@ function addTariff(tariffData = null) {
     `;
     
     container.insertAdjacentHTML('beforeend', tariffHtml);
+    
+    // Trigger configuration change detection after adding tariff
+    setTimeout(() => handleConfigurationChange(), 50);
 }
 
 // Generate month checkboxes
@@ -337,6 +426,16 @@ function setupTariffEventListeners(tariffId) {
     if (methodSelect && nightSettings) {
         methodSelect.addEventListener('change', function() {
             nightSettings.style.display = this.value === 'night_reduced' ? 'grid' : 'none';
+            handleConfigurationChange();
+        });
+    }
+    
+    // Add change listeners to all tariff inputs
+    const tariffElement = document.getElementById(tariffId);
+    if (tariffElement) {
+        const inputs = tariffElement.querySelectorAll('input, select');
+        inputs.forEach(input => {
+            input.addEventListener('change', handleConfigurationChange);
         });
     }
 }
@@ -346,6 +445,7 @@ function removeTariff(tariffId) {
     const tariff = document.getElementById(tariffId);
     if (tariff) {
         tariff.remove();
+        handleConfigurationChange();
     }
 }
 
@@ -367,8 +467,25 @@ function updateConfigStatus(source = 'custom', modelName = '') {
             statusDiv.innerHTML = `<div class="status-info success">✅ Price model "${modelName}" downloaded successfully!</div>`;
             setTimeout(() => updateConfigStatus('custom'), 3000);
             break;
+        case 'modified':
+            statusDiv.innerHTML = '<div class="status-info warning">⚠️ Configuration modified from original model</div>';
+            break;
+        case 'custom':
+            // Only show custom status if no model is currently loaded
+            if (currentLoadedModel === null) {
+                statusDiv.innerHTML = '<div class="status-info info">⚙️ Using custom configuration</div>';
+            } else {
+                // Check if configuration has been modified from the loaded model
+                if (hasConfigurationChanged()) {
+                    statusDiv.innerHTML = '<div class="status-info warning">⚠️ Configuration modified from original model</div>';
+                } else {
+                    statusDiv.innerHTML = `<div class="status-info info">🏢 Using price model: ${availableModels[currentLoadedModel]?.name || currentLoadedModel}</div>`;
+                }
+            }
+            break;
         default:
-            statusDiv.innerHTML = '<div class="status-info info">⚙️ Using custom configuration</div>';
+            // Don't show any status by default
+            statusDiv.innerHTML = '';
     }
 }
 
@@ -389,6 +506,10 @@ function loadSavedConfiguration() {
         try {
             const config = JSON.parse(saved);
             loadConfiguration(config);
+            // Reset model tracking when loading saved config
+            currentLoadedModel = null;
+            originalModelConfig = null;
+            document.getElementById('priceModel').value = 'custom';
             updateConfigStatus('saved');
         } catch (error) {
             console.error('Error loading saved configuration:', error);
@@ -410,6 +531,10 @@ function resetConfiguration() {
         // Clear and add default tariff
         document.getElementById('tariffsContainer').innerHTML = '';
         addTariff();
+        
+        // Reset model tracking
+        currentLoadedModel = null;
+        originalModelConfig = null;
         
         updateConfigStatus('default');
         
@@ -485,6 +610,10 @@ function loadConfiguration(config) {
     document.getElementById('vatRate').value = config.vat_rate || 25.0;
     document.getElementById('pricesIncludeVat').checked = config.prices_include_vat !== false;
     document.getElementById('priceModel').value = config.selected_price_model || 'custom';
+    
+    // Reset model tracking when loading external configuration
+    currentLoadedModel = null;
+    originalModelConfig = null;
     
     // Clear and load tariffs
     document.getElementById('tariffsContainer').innerHTML = '';
@@ -642,13 +771,19 @@ function handleFile(file) {
     reader.onload = function(e) {
         try {
             const csvText = e.target.result;
-            csvData = parseCSV(csvText);
+            const parseResult = parseCSV(csvText);
+            csvData = parseResult.data;
             
             if (validateCSVData(csvData)) {
+                let statusInfo = `✅ Valid CSV with ${csvData.length} rows`;
+                if (parseResult.skippedLines > 0) {
+                    statusInfo += ` (skipped ${parseResult.skippedLines} header line${parseResult.skippedLines > 1 ? 's' : ''})`;
+                }
+                
                 fileInfo.innerHTML = `
                     <strong>File:</strong> ${file.name}<br>
                     <strong>Size:</strong> ${(file.size / 1024).toFixed(1)} KB<br>
-                    <strong>Status:</strong> ✅ Valid CSV with ${csvData.length} rows<br>
+                    <strong>Status:</strong> ${statusInfo}<br>
                     <strong>Date Range:</strong> ${getDateRange(csvData)}
                 `;
                 
@@ -669,20 +804,86 @@ function parseCSV(csvText) {
         throw new Error('CSV file must have at least a header row and one data row');
     }
     
-    // Detect separator (comma or semicolon)
-    const firstLine = lines[0];
-    const commaCount = (firstLine.match(/,/g) || []).length;
-    const semicolonCount = (firstLine.match(/;/g) || []).length;
-    const separator = semicolonCount > commaCount ? ';' : ',';
+    // Find the actual header row by scanning for expected column names
+    let headerRowIndex = 0;
+    let separator = ',';
+    
+    for (let i = 0; i < Math.min(lines.length, 10); i++) { // Check first 10 lines
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Detect separator for this line
+        const commaCount = (line.match(/,/g) || []).length;
+        const semicolonCount = (line.match(/;/g) || []).length;
+        const lineSeparator = semicolonCount > commaCount ? ';' : ',';
+        
+        // Parse the line to get potential headers
+        const potentialHeaders = parseCSVLine(line, lineSeparator);
+        
+        // Check if this line contains expected header keywords
+        const hasDateColumn = potentialHeaders.some(h => {
+            const lower = h.toLowerCase();
+            return lower.includes('date') || 
+                   lower.includes('time') ||
+                   lower.includes('timestamp') ||
+                   lower.includes('datetime') ||
+                   lower === 'dt' ||
+                   lower === 'ts';
+        });
+        
+        const hasUsageColumn = potentialHeaders.some(h => {
+            const lower = h.toLowerCase();
+            return lower.includes('kwh') || 
+                   lower.includes('usage') ||
+                   lower.includes('consumption') ||
+                   lower.includes('energy') ||
+                   lower.includes('power') ||
+                   lower.includes('load') ||
+                   lower.includes('wh') ||
+                   lower === 'usage' ||
+                   lower === 'energy' ||
+                   lower === 'power' ||
+                   lower === 'load';
+        });
+        
+        // If we find a line with both date and usage columns, it's likely the header
+        if (hasDateColumn && hasUsageColumn) {
+            headerRowIndex = i;
+            separator = lineSeparator;
+            break;
+        }
+        
+        // If we find a line with just date column, it might be the header
+        if (hasDateColumn && potentialHeaders.length >= 2) {
+            headerRowIndex = i;
+            separator = lineSeparator;
+            break;
+        }
+    }
+    
+    // Fallback: if no proper header found, use the first non-empty line
+    if (headerRowIndex === 0) {
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim()) {
+                const commaCount = (lines[i].match(/,/g) || []).length;
+                const semicolonCount = (lines[i].match(/;/g) || []).length;
+                separator = semicolonCount > commaCount ? ';' : ',';
+                headerRowIndex = i;
+                console.log('Fallback: Using first non-empty line as header at line:', headerRowIndex + 1);
+                break;
+            }
+        }
+    }
     
     console.log('Detected CSV separator:', separator);
+    console.log('Found header at line:', headerRowIndex + 1);
     
     // Parse CSV with proper handling of quoted fields
-    const headers = parseCSVLine(lines[0], separator);
+    const headers = parseCSVLine(lines[headerRowIndex], separator);
     console.log('Parsed headers:', headers);
     
     const data = [];
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = headerRowIndex + 1; i < lines.length; i++) {
         if (lines[i].trim()) { // Skip empty lines
             const values = parseCSVLine(lines[i], separator);
             if (values.length === headers.length) {
@@ -695,7 +896,11 @@ function parseCSV(csvText) {
         }
     }
     
-    return data;
+    return {
+        data: data,
+        headerRowIndex: headerRowIndex,
+        skippedLines: headerRowIndex
+    };
 }
 
 // Parse a single CSV line handling quoted fields
@@ -1226,6 +1431,24 @@ function toggleDownloadSection() {
         document.getElementById('jsonPreview').style.display = 'none';
     } else {
         downloadSection.style.display = 'block';
+    }
+}
+
+// Configuration Toggle Functions
+function toggleConfigurationDetails() {
+    const configDetails = document.getElementById('configDetails');
+    const toggleButton = document.getElementById('toggleConfig');
+    const toggleIcon = document.getElementById('toggleIcon');
+    const isVisible = configDetails.style.display !== 'none';
+    
+    if (isVisible) {
+        configDetails.style.display = 'none';
+        toggleIcon.textContent = '▼';
+        toggleButton.innerHTML = '<span id="toggleIcon">▼</span> Show Configuration Details';
+    } else {
+        configDetails.style.display = 'block';
+        toggleIcon.textContent = '▲';
+        toggleButton.innerHTML = '<span id="toggleIcon">▲</span> Hide Configuration Details';
     }
 }
 

@@ -30,72 +30,82 @@
                 <!-- Configuration Status -->
                 <div id="configStatus" class="status-info"></div>
 
-                <!-- Basic Settings -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="currency">Currency:</label>
-                        <select id="currency">
-                            <option value="SEK">SEK (Swedish Krona)</option>
-                            <option value="EUR">EUR (Euro)</option>
-                            <option value="USD">USD (US Dollar)</option>
-                            <option value="NOK">NOK (Norwegian Krone)</option>
-                            <option value="DKK">DKK (Danish Krone)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="fixedCost">Monthly Fixed Cost:</label>
-                        <input type="number" id="fixedCost" step="0.01" min="0" value="100.00">
-                    </div>
+                <!-- Toggle Button for Configuration Details -->
+                <div class="config-toggle">
+                    <button type="button" id="toggleConfig" class="btn btn-outline">
+                        <span id="toggleIcon">▼</span> Show Configuration Details
+                    </button>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="usageRate">Usage Rate (per kWh):</label>
-                        <input type="number" id="usageRate" step="0.0001" min="0" value="1.2000">
+                <!-- Collapsible Configuration Details -->
+                <div id="configDetails" class="config-details" style="display: none;">
+                    <!-- Basic Settings -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="currency">Currency:</label>
+                            <select id="currency">
+                                <option value="SEK">SEK (Swedish Krona)</option>
+                                <option value="EUR">EUR (Euro)</option>
+                                <option value="USD">USD (US Dollar)</option>
+                                <option value="NOK">NOK (Norwegian Krone)</option>
+                                <option value="DKK">DKK (Danish Krone)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="fixedCost">Monthly Fixed Cost:</label>
+                            <input type="number" id="fixedCost" step="0.01" min="0" value="100.00">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="vatRate">VAT Rate (%):</label>
-                        <input type="number" id="vatRate" step="0.1" min="0" max="100" value="25.0">
-                    </div>
-                </div>
 
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="pricesIncludeVat" checked>
-                        Prices include VAT
-                    </label>
-                </div>
-
-                <!-- Power Tariffs Section -->
-                <div class="tariffs-section">
-                    <div class="section-header">
-                        <h3>Power Tariffs</h3>
-                        <button type="button" id="addTariff" class="btn btn-secondary">Add Tariff</button>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="usageRate">Usage Rate (per kWh):</label>
+                            <input type="number" id="usageRate" step="0.0001" min="0" value="1.2000">
+                        </div>
+                        <div class="form-group">
+                            <label for="vatRate">VAT Rate (%):</label>
+                            <input type="number" id="vatRate" step="0.1" min="0" max="100" value="25.0">
+                        </div>
                     </div>
-                    <div id="tariffsContainer"></div>
-                </div>
 
-                <!-- Configuration Actions -->
-                <div class="config-actions">
-                    <button type="button" id="saveConfig" class="btn btn-primary">Save Configuration</button>
-                    <button type="button" id="loadConfig" class="btn btn-secondary">Load Saved</button>
-                    <button type="button" id="resetConfig" class="btn btn-danger">Reset to Defaults</button>
-                    <button type="button" id="downloadModel" class="btn btn-success">Download Model</button>
-                </div>
-                
-                <!-- Download Model Section -->
-                <div id="downloadSection" class="download-section" style="display: none;">
                     <div class="form-group">
-                        <label for="modelName">Model Name:</label>
-                        <input type="text" id="modelName" value="Custom Configuration" placeholder="Enter model name">
+                        <label>
+                            <input type="checkbox" id="pricesIncludeVat" checked>
+                            Prices include VAT
+                        </label>
                     </div>
-                    <div class="download-actions">
-                        <button type="button" id="previewModel" class="btn btn-secondary">Preview JSON</button>
-                        <button type="button" id="downloadJson" class="btn btn-success">Download JSON</button>
+
+                    <!-- Power Tariffs Section -->
+                    <div class="tariffs-section">
+                        <div class="section-header">
+                            <h3>Power Tariffs</h3>
+                            <button type="button" id="addTariff" class="btn btn-secondary">Add Tariff</button>
+                        </div>
+                        <div id="tariffsContainer"></div>
                     </div>
-                    <div id="jsonPreview" class="json-preview" style="display: none;">
-                        <h4>JSON Preview:</h4>
-                        <pre id="jsonContent"></pre>
+
+                    <!-- Configuration Actions -->
+                    <div class="config-actions">
+                        <button type="button" id="saveConfig" class="btn btn-primary">Save Configuration</button>
+                        <button type="button" id="loadConfig" class="btn btn-secondary">Load Saved</button>
+                        <button type="button" id="resetConfig" class="btn btn-danger">Reset to Defaults</button>
+                        <button type="button" id="downloadModel" class="btn btn-success">Download Model</button>
+                    </div>
+                    
+                    <!-- Download Model Section -->
+                    <div id="downloadSection" class="download-section" style="display: none;">
+                        <div class="form-group">
+                            <label for="modelName">Model Name:</label>
+                            <input type="text" id="modelName" value="Custom Configuration" placeholder="Enter model name">
+                        </div>
+                        <div class="download-actions">
+                            <button type="button" id="previewModel" class="btn btn-secondary">Preview JSON</button>
+                            <button type="button" id="downloadJson" class="btn btn-success">Download JSON</button>
+                        </div>
+                        <div id="jsonPreview" class="json-preview" style="display: none;">
+                            <h4>JSON Preview:</h4>
+                            <pre id="jsonContent"></pre>
+                        </div>
                     </div>
                 </div>
             </section>
